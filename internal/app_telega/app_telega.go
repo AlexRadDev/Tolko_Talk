@@ -65,7 +65,9 @@ func (c *customCodeAuthenticator) SignUp(_ context.Context) (auth.UserInfo, erro
 // ---------------------------------------------------------------------------------------------------------------------
 
 // RunTelegaApp запускает клиент телеги и парсит нужный канал
-func RunTelegaApp(apiID int, apiHash, channelName, phone, password string, timeNews time.Duration) {
+func RunTelegaApp(apiID int, apiHash, channelName, phone, password string, timeNews time.Duration) (string, error) {
+	var resultMessage string
+
 	// Создаем клиент
 	client := telegram.NewClient(apiID, apiHash, telegram.Options{})
 	slog.Info("Создали клиента telegram.NewClient")
@@ -168,7 +170,7 @@ func RunTelegaApp(apiID int, apiHash, channelName, phone, password string, timeN
 			}
 
 			// Удаляем пустые строки
-			resultMessage := RemoveEmptyLines(message.Message)
+			resultMessage = RemoveEmptyLines(message.Message)
 
 			// Выводим данные
 			fmt.Printf("ID: %d\n, Дата: %s\n, Текст: %s\n", message.ID, msgTime, resultMessage)
@@ -176,10 +178,11 @@ func RunTelegaApp(apiID int, apiHash, channelName, phone, password string, timeN
 
 		return nil
 	})
-
 	if err != nil {
 		log.Fatalf("Ошибка: %v", err)
 	}
+
+	return resultMessage, nil
 }
 
 // RemoveEmptyLines Удаляет все пустые строки из текста
