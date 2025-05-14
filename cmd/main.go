@@ -5,17 +5,17 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"tolko_talk/internal/app_text_to_speech"
 
 	"github.com/joho/godotenv"
 	"tolko_talk/internal/app_telega"
-	"tolko_talk/internal/app_text_to_speech"
 )
 
 const (
 	pathEnv      = "D:/go_progect_for_Git/tolko_talk/.env"
-	timeNews     = 20 // Промежуток времени в минутах (за который нужно скачать новости)
+	timeNews     = 60 // Промежуток времени в минутах (за который нужно скачать новости)
 	mp3Paht      = "sound_001.mp3"
-	SpeakingRate = 1.5 // От 0.2 до 4.0
+	SpeakingRate = 1.2 // От 0.2 до 4.0
 )
 
 func main() {
@@ -58,7 +58,6 @@ func main() {
 	if keyToSpeech == "" {
 		log.Fatal("Ошибка: GOOGLE_APPLICATION_CREDENTIALS не задан в .env")
 	}
-
 	//slog.Info(fmt.Sprintf("Мой TWO_FACTOR_AUTH из .env: %s", twoFactorAuth))
 	slog.Info("Создали переменные API данных")
 
@@ -67,9 +66,6 @@ func main() {
 	if err != nil {
 		log.Fatalf("Ошибка функции RunTelegaApp: %v", err)
 	}
-
-	//textNews := "Welcome to Tbilisi, the vibrant capital of Georgia! Nestled along the Mtkvari River, this city blends ancient history with modern charm. Explore the cobblestone streets of the Old Town, visit the stunning Holy Trinity Cathedral, or enjoy a glass of local wine at a cozy café. Tbilisi awaits you with warmth and wonder."
-	//textNews = "Текст: Восстанавливаемый петербургскими специалистами Драматический театр в Мариуполе начнет работать в этом году, сообщил губернатор Беглов.\nМариупольцы опасались, что легендарный театр после страшного взрыва, устроенного нацистами, потерян навсегда. Но нашим строителям, за что мы их благодарим, удалось не просто восстановить здание, но и наполнить его лучшим современным оборудованием. Беглов недавно сообщал, что готовность здания составляет порядка 70%. А теперь рассказал, что Петербургский институт сценических искусств открыл целевую программу для подготовки актеров и режиссеров из новых регионов, которые придут работать в восстановленный театр."
 
 	// Запускаем перевод текста в аудио
 	if err := app_text_to_speech.SynthesizeText(textNews, keyToSpeech, mp3Paht, SpeakingRate); err != nil {

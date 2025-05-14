@@ -9,6 +9,7 @@ import (
 	"strings"
 	"time"
 
+	//"github.com/gotd/td/session"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/tg"
@@ -66,10 +67,17 @@ func (c *customCodeAuthenticator) SignUp(_ context.Context) (auth.UserInfo, erro
 
 // RunTelegaApp запускает клиент телеги и парсит нужный канал
 func RunTelegaApp(apiID int, apiHash, channelName, phone, password string, timeNews time.Duration) (string, error) {
-	var resultMessage string
+	var resultMessage strings.Builder // Используем strings.Builder для сборки текста
 
-	// Создаем клиент
-	client := telegram.NewClient(apiID, apiHash, telegram.Options{})
+	// Настройка хранилища сессии в файл
+	sessionStorage := &telegram.FileSessionStorage{
+		Path: "session.json", // Путь к файлу для хранения сессии
+	}
+
+	// Создаем клиент с хранилищем сессии
+	client := telegram.NewClient(apiID, apiHash, telegram.Options{
+		SessionStorage: sessionStorage,
+	})
 	slog.Info("Создали клиента telegram.NewClient")
 
 	// Запускаем клиент
@@ -170,10 +178,16 @@ func RunTelegaApp(apiID int, apiHash, channelName, phone, password string, timeN
 			}
 
 			// Удаляем пустые строки
-			resultMessage = RemoveEmptyLines(message.Message)
+			cleanMessage := RemoveEmptyLines(message.Message)
+
+			//messageText := fmt.Sprintf("ID: %d, Дата: %s, Текст: %s\n", message.ID, msgTime, cleanMessage)
+			messageText := fmt.Sprintf("%s, %s\n", msgTime.Format("15:04"), cleanMessage)
+
+			// Добавляем сообщение в resultMessage
+			resultMessage.WriteString(messageText)
 
 			// Выводим данные
-			fmt.Printf("ID: %d\n, Дата: %s\n, Текст: %s\n", message.ID, msgTime, resultMessage)
+			fmt.Printf("%s, %s\n", msgTime.Format("15:04"), cleanMessage)
 		}
 
 		return nil
@@ -182,7 +196,7 @@ func RunTelegaApp(apiID int, apiHash, channelName, phone, password string, timeN
 		log.Fatalf("Ошибка: %v", err)
 	}
 
-	return resultMessage, nil
+	return resultMessage.String(), nil
 }
 
 // RemoveEmptyLines Удаляет все пустые строки из текста

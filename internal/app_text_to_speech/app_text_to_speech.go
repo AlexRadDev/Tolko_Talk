@@ -1,3 +1,5 @@
+// https://console.cloud.google.com/apis/library/texttospeech.googleapis.com?inv=1&invt=AbxYSA&project=semiotic-mender-459813-c9
+
 package app_text_to_speech
 
 import (
@@ -34,9 +36,9 @@ func SynthesizeText(text, keyToSpeech, outputFile string, speakingRate float64) 
 	//}
 
 	voice := &texttospeech.VoiceSelectionParams{
-		LanguageCode: "ru-RU",           // Код языка для русского
-		Name:         "ru-RU-Wavenet-A", // Имя голоса (WaveNet голос для русского языка)
-		SsmlGender:   "MALE",            // Пол голоса
+		LanguageCode: "ru-RU",            // Код языка для русского
+		Name:         "ru-RU-Standard-B", // Имя голоса (WaveNet голос для русского языка)
+		SsmlGender:   "FEMALE",           // Пол голоса
 	}
 
 	// Настройте параметры звука (например, формат MP3)
