@@ -30,6 +30,11 @@ Thumbs.db
 # Project specific
 docs/
 tmp/
-logs/ 
+logs/
+tools/
+project-files.txt
 
 README.md
+
+semiotic-mender-459813-c9-fdcf02adec5e.json
+session.json

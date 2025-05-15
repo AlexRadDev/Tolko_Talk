@@ -1,21 +1,33 @@
 package main
 
 import (
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"log"
 	"log/slog"
-	"os"
-	"strconv"
 
 	"github.com/joho/godotenv"
-	"tolko_talk/internal/app_telega"
+
+	//"tolko_talk/internal/app_telega"
+	//"tolko_talk/internal/app_text_to_speech"
+	"tolko_talk/internal/config"
+	"tolko_talk/internal/server"
+	"tolko_talk/internal/tg_bot_handler"
+	"tolko_talk/internal/tg_bot_init"
+	"tolko_talk/internal/tg_bot_usecase"
+	"tolko_talk/tools/logger"
 )
 
 const (
-	pathEnv  = "D:/go_progect_for_Git/tolko_talk/.env"
-	timeNews = 20 // промежуток времени в минутах (за который нужно скачать новости)
+	pathEnv = "D:/go_progect_for_Git/tolko_talk/.env"
 )
 
 func main() {
+	const lbl = "cmd/main.go/main()"
+	logger := logger.NewColorLogger(lbl)
+	slog.SetDefault(logger)
+
+	slog.Info("Запустили обертку logger")
+
 	// Загружаем файл .env
 	err := godotenv.Load(pathEnv)
 	if err != nil {
@@ -23,37 +35,49 @@ func main() {
 	}
 	slog.Info("Прочитали файл .env")
 
-	// Получаем переменные окружения
-	apiIDStr := os.Getenv("API_ID")
-	if apiIDStr == "" {
-		log.Fatal("Ошибка: API_ID не задан в .env")
-	}
-	apiID, err := strconv.Atoi(apiIDStr)
+	// Инициализируем объект config
+	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatalf("Ошибка при переводе API_ID в int: %v", err)
+		log.Fatalf("Ошибка чтения .env файла: %v", err)
 	}
-	apiHash := os.Getenv("API_HASH")
-	if apiHash == "" {
-		log.Fatal("Ошибка: API_HASH не задан в .env")
-	}
-	channelName := os.Getenv("CHANNEL_NAME")
-	if channelName == "" {
-		log.Fatal("Ошибка: CHANNEL_USERNAME не задан в .env")
-	}
-	if len(channelName) > 0 && channelName[0] == '@' { // Убираем @ из имени канала
-		channelName = channelName[1:]
-	}
-	phone := os.Getenv("PHONE")
-	if phone == "" {
-		log.Fatal("Ошибка: PHONE не задан в .env")
-	}
-	password := os.Getenv("TWO_FACTOR_AUTH")
-	if password == "" {
-		log.Fatal("Ошибка: TWO_FACTOR_AUTH не задан в .env")
-	}
-	//slog.Info(fmt.Sprintf("Мой TWO_FACTOR_AUTH из .env: %s", twoFactorAuth))
-	slog.Info("Создали переменные API данных")
+	slog.Info("Создали объект config")
 
-	// Запускаем парсинг канала телеги
-	app_telega.RunTelegaApp(apiID, apiHash, channelName, phone, password, timeNews)
+	// Инициализируем объект бота
+	tgBotClient, err := tg_bot_init.NewBot(cfg.TG_Bot_Token)
+	if err != nil {
+		log.Fatalf("Ошибка инициализации бота: %v", err)
+	}
+	slog.Info("Создали объект tgBotClient")
+
+	// Инициализируем объект бизнес-логика
+	tgBotUseCase := tg_bot_usecase.NewUseCase()
+	slog.Info("Создали объект tgBotUseCase")
+
+	// Инициализируем объект tgBotHandler
+	tgBotHandler := tg_bot_handler.NewHandler(tgBotUseCase) // передаём usecase в хендлеры
+	slog.Info("Создали объект tgBotHandler")
+
+	// Настраиваем получение обновлений через GetUpdates
+	updateConfig := tgbotapi.NewUpdate(0)
+	updateConfig.Timeout = 60
+	updates := tgBotClient.GetUpdatesChan(updateConfig)
+	slog.Info("Бот запущен и ожидает обновления")
+
+	// Запуск сервера
+	go server.StartServer(cfg, tgBotClient)
+
+	// Обрабатываем обновления
+	for update := range updates {
+		if update.Message != nil {
+			slog.Info("Получено сообщение", "text", update.Message.Text, "chatID", update.Message.Chat.ID)
+			tgBotHandler.HandleMessage(tgBotClient, update.Message)
+		}
+	}
 }
+
+//region Удаляем старый вебхук, если он был
+//_, err = tgBotClient.Request(tgbotapi.NewWebhook(""))
+//if err != nil {
+//	slog.Warn("Не удалось удалить вебхук", "error", err)
+//}
+//endregion
