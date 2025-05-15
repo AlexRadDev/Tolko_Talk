@@ -191,6 +191,7 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 		//--------------------------------------------------------------------------------------------------------------
 	case "Отправить":
 		request := uc.userRequests[chatID]
+		request.ChatID = chatID
 
 		// Валидация
 		if request.NameChanel == "" {

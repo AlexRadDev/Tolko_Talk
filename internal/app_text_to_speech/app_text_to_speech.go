@@ -6,21 +6,26 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"io/ioutil"
+	"log/slog"
+	"tolko_talk/tools/logger"
 
 	"google.golang.org/api/option"
 	texttospeech "google.golang.org/api/texttospeech/v1"
 )
 
 // SynthesizeText по входящему тексту синтэзирует речь
-func SynthesizeText(text, keyToSpeech, outputFile string, speakingRate float64) error {
+func SynthesizeText(text, keyToSpeech, outputFile string, speakingRate float64) ([]byte, error) {
+	const lbl = "internal/app_text_to_speech/app_text_to_speech.go/SynthesizeText()"
+	logger := logger.NewColorLogger(lbl)
+	slog.SetDefault(logger)
+
 	// Создать контекст
 	ctx := context.Background()
 
 	// Создайте новый клиент преобразования текста в речь
 	client, err := texttospeech.NewService(ctx, option.WithCredentialsFile(keyToSpeech))
 	if err != nil {
-		return fmt.Errorf("failed to create Text-to-Speech client: %v", err)
+		return nil, fmt.Errorf("failed to create Text-to-Speech client: %v", err)
 	}
 
 	// Определите входной текст
@@ -57,21 +62,21 @@ func SynthesizeText(text, keyToSpeech, outputFile string, speakingRate float64) 
 	// Выполните запрос синтеза речи
 	resp, err := client.Text.Synthesize(req).Do()
 	if err != nil {
-		return fmt.Errorf("failed to synthesize speech: %v", err)
+		return nil, fmt.Errorf("failed to synthesize speech: %v", err)
 	}
 
 	// Декодируем base64 строку в байты
 	audioData, err := base64.StdEncoding.DecodeString(resp.AudioContent)
 	if err != nil {
-		return fmt.Errorf("failed to decode base64 audio content: %v", err)
+		return nil, fmt.Errorf("failed to decode base64 audio content: %v", err)
 	}
 
 	// Записать аудиоконтент в файл
-	err = ioutil.WriteFile(outputFile, audioData, 0644)
-	if err != nil {
-		return fmt.Errorf("failed to write audio file: %v", err)
-	}
+	//err = ioutil.WriteFile(outputFile, audioData, 0644)
+	//if err != nil {
+	//	return nil, fmt.Errorf("failed to write audio file: %v", err)
+	//}
+	//slog.Info(fmt.Sprintf("Audio content written to %s\n", outputFile))
 
-	fmt.Printf("Audio content written to %s\n", outputFile)
-	return nil
+	return audioData, nil
 }

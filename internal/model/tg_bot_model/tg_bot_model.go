@@ -7,4 +7,5 @@ type TgBotRequest struct { // запрос
 	TimePeriod           time.Duration `json:"time_period"`
 	SpeakingRate         float64       `json:"speaking_rate"`
 	AwaitingChannelInput bool          `json:"awaiting_channel_input"`
+	ChatID               int64         `json:"chat_id"`
 }

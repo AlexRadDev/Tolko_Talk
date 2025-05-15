@@ -67,7 +67,7 @@ func main() {
 	slog.Info("Бот запущен и ожидает обновления")
 
 	// Запуск сервера
-	go server.StartServer(cfg)
+	go server.StartServer(cfg, tgBotClient)
 
 	// Обрабатываем обновления
 	for update := range updates {
@@ -77,12 +77,6 @@ func main() {
 		}
 	}
 }
-
-//
-//// Запускаем перевод текста в аудио
-//if err := app_text_to_speech.SynthesizeText(textNews, keyToSpeech, mp3Paht, SpeakingRate); err != nil {
-//	log.Fatalf("Ошибка функции SynthesizeText: %v", err)
-//}
 
 // Удаляем старый вебхук, если он был
 //_, err = tgBotClient.Request(tgbotapi.NewWebhook(""))
