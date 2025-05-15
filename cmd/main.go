@@ -18,10 +18,7 @@ import (
 )
 
 const (
-	pathEnv      = "D:/go_progect_for_Git/tolko_talk/.env"
-	timeNews     = 60 // Промежуток времени в минутах (за который нужно скачать новости)
-	mp3Paht      = "sound_001.mp3"
-	SpeakingRate = 1.2 // От 0.2 до 4.0
+	pathEnv = "D:/go_progect_for_Git/tolko_talk/.env"
 )
 
 func main() {
@@ -78,8 +75,9 @@ func main() {
 	}
 }
 
-// Удаляем старый вебхук, если он был
+//region Удаляем старый вебхук, если он был
 //_, err = tgBotClient.Request(tgbotapi.NewWebhook(""))
 //if err != nil {
 //	slog.Warn("Не удалось удалить вебхук", "error", err)
 //}
+//endregion

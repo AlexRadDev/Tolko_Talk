@@ -8,6 +8,8 @@ import (
 	"os"
 	"strings"
 	"time"
+	"unicode/utf8"
+
 	"tolko_talk/tools/logger"
 
 	//"github.com/gotd/td/session"
@@ -73,6 +75,7 @@ func RunTelegaApp(apiID int, apiHash, channelName, phone, password string, timeP
 	slog.SetDefault(logger)
 
 	var resultMessage strings.Builder // Используем strings.Builder для сборки текста
+	resultText := ""
 
 	// Настройка хранилища сессии в файл
 	sessionStorage := &telegram.FileSessionStorage{
@@ -83,7 +86,7 @@ func RunTelegaApp(apiID int, apiHash, channelName, phone, password string, timeP
 	client := telegram.NewClient(apiID, apiHash, telegram.Options{
 		SessionStorage: sessionStorage,
 	})
-	slog.Info("Создали клиента telegram.NewClient")
+	slog.Info("Создали клиента Telega App")
 
 	// Запускаем клиент
 	err := client.Run(context.Background(), func(ctx context.Context) error {
@@ -156,6 +159,7 @@ func RunTelegaApp(apiID int, apiHash, channelName, phone, password string, timeP
 		if err != nil {
 			return fmt.Errorf("не удалось получить сообщения: %w", err)
 		}
+		slog.Info("Посты из тг канала успешно спаршены")
 
 		// Обрабатываем сообщения
 		var msgSlice []tg.MessageClass
@@ -183,37 +187,83 @@ func RunTelegaApp(apiID int, apiHash, channelName, phone, password string, timeP
 			}
 
 			// Удаляем пустые строки
-			cleanMessage := RemoveEmptyLines(message.Message)
+			//cleanMessage := RemoveEmptyLines(message.Message)
 
 			//messageText := fmt.Sprintf("ID: %d, Дата: %s, Текст: %s\n", message.ID, msgTime, cleanMessage)
-			messageText := fmt.Sprintf("%s, %s\n", msgTime.Format("15:04"), cleanMessage)
+			//messageText := fmt.Sprintf("%s, %s\n", msgTime.Format("15:04"), cleanMessage)
+			messageText := fmt.Sprintf("%s\n", message.Message)
+			//slog.Info(fmt.Sprintf("KSANDR-----01 → messageText: %v", messageText))
 
 			// Добавляем сообщение в resultMessage
 			resultMessage.WriteString(messageText)
+			//slog.Info(fmt.Sprintf("KSANDR-----02 → resultMessage: %v", resultMessage))
 
 			// Выводим данные
 			//fmt.Printf("%s, %s\n", msgTime.Format("15:04"), cleanMessage)
 		}
 
+		//slog.Info(fmt.Sprintf("KSANDR-----03 → resultMessage: %v", resultMessage.String()))
+		resultText = RemoveEmptyLines(resultMessage.String())
+
 		return nil
 	})
 	if err != nil {
-		log.Fatalf("Ошибка: %v", err)
+		slog.Error(fmt.Sprintf("Не удалось запустить клиент Telega App. Ошибка: %v", err))
+		log.Fatal("")
 	}
 
-	return resultMessage.String(), nil
+	return resultText, nil
 }
 
-// RemoveEmptyLines Удаляет все пустые строки из текста
+// RemoveEmptyLines Удаляет все пустые строки из текста, и ненужные символы.
 func RemoveEmptyLines(input string) string {
+	const lbl = "internal/app_telega/app_telega.go/RemoveEmptyLines()"
+	logger := logger.NewColorLogger(lbl)
+	slog.SetDefault(logger)
+
+	// 1. Удаляем пустые строки
 	lines := strings.Split(input, "\n")
 	var nonEmptyLines []string
-
 	for _, line := range lines {
 		if strings.TrimSpace(line) != "" {
 			nonEmptyLines = append(nonEmptyLines, line)
 		}
 	}
+	text := strings.Join(nonEmptyLines, "\n")
+	slog.Info("Пустые строки из текста успешно удалены")
 
-	return strings.Join(nonEmptyLines, "\n")
+	// 2. Удаляем все символы, кроме русских букв, пробелов и знаков препинания
+	var cleanedText strings.Builder
+	for _, char := range text {
+		if (char >= 'а' && char <= 'я') ||
+			(char >= 'А' && char <= 'Я') ||
+			char == 'ё' || char == 'Ё' ||
+			string(char) == " " ||
+			string(char) == "." || string(char) == "," || string(char) == "!" ||
+			string(char) == "?" || string(char) == ";" || string(char) == ":" ||
+			string(char) == "—" || string(char) == "–" || string(char) == "-" ||
+			string(char) == "(" || string(char) == ")" || string(char) == "«" ||
+			string(char) == "»" || string(char) == "\"" || string(char) == "'" ||
+			char == '\n' {
+			cleanedText.WriteRune(char)
+		}
+	}
+
+	// Получаем итоговый текст
+	result := cleanedText.String()
+	slog.Info("Разные символы успешно удалены")
+
+	// 3. Ограничиваем длину текста до 4800 байт
+	if len(result) > 4800 {
+		slog.Warn("Текст превышает лимит 4800 байт, выполняется обрезка")
+		// Обрезаем до 4500 байт, сохраняя целостность UTF-8 символов
+		result = result[:4800]
+		// Корректируем обрезку, если последний байт — часть многобайтового символа
+		for len(result) > 0 && utf8.RuneStart(result[len(result)-1]) == false {
+			result = result[:len(result)-1]
+		}
+	}
+
+	slog.Info("Итоговый текст готов")
+	return result
 }

@@ -6,13 +6,31 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"time"
-	"tolko_talk/tools/logger"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"strconv"
+
 	"tolko_talk/internal/model/tg_bot_model"
+	"tolko_talk/tools/logger"
 )
+
+// Определяем константу для основной клавиатуры
+var MainKeyboard = tgbotapi.NewReplyKeyboard(
+	tgbotapi.NewKeyboardButtonRow(
+		tgbotapi.NewKeyboardButton("Выбрать канал"),
+		tgbotapi.NewKeyboardButton("Скорость речи"),
+	),
+	tgbotapi.NewKeyboardButtonRow(
+		tgbotapi.NewKeyboardButton("Период времени"),
+		tgbotapi.NewKeyboardButton("Отправить"),
+	),
+)
+
+func init() {
+	MainKeyboard.ResizeKeyboard = true
+	MainKeyboard.Selective = false
+}
 
 // UseCase хранит состояние пользователей
 type UseCase struct {
@@ -37,24 +55,11 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 	if _, ok := uc.userRequests[chatID]; !ok {
 		uc.userRequests[chatID] = &tg_bot_model.TgBotRequest{}
 	}
-	//slog.Info("Обрабатываем сообщение", "text", text, "chatID", chatID)
 
 	if text == "/start" {
 		slog.Info("Обработка команды /start", "chatID", chatID)
-		keyboard := tgbotapi.NewReplyKeyboard(
-			tgbotapi.NewKeyboardButtonRow(
-				tgbotapi.NewKeyboardButton("Выбрать канал"),
-				tgbotapi.NewKeyboardButton("Скорость речи"),
-			),
-			tgbotapi.NewKeyboardButtonRow(
-				tgbotapi.NewKeyboardButton("Период времени"),
-				tgbotapi.NewKeyboardButton("Отправить"),
-			),
-		)
-		keyboard.ResizeKeyboard = true
-		keyboard.Selective = false
 		msg := tgbotapi.NewMessage(chatID, "Добро пожаловать! Выберите действие:")
-		msg.ReplyMarkup = keyboard
+		msg.ReplyMarkup = MainKeyboard
 		if _, err := bot.Send(msg); err != nil {
 			return err
 		}
@@ -62,10 +67,9 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 		return nil
 	}
 
-	//--------------------------------------------------------------------------------------------------------------
 	switch text {
 	case "Выбрать канал":
-		uc.userRequests[chatID].AwaitingChannelInput = true // Устанавливаем состояние ожидания ввода канала
+		uc.userRequests[chatID].AwaitingChannelInput = true
 		keyboard := tgbotapi.NewReplyKeyboard(
 			tgbotapi.NewKeyboardButtonRow(
 				tgbotapi.NewKeyboardButton("Назад"),
@@ -73,14 +77,13 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 		)
 		keyboard.ResizeKeyboard = true
 		keyboard.Selective = false
-		msg := tgbotapi.NewMessage(chatID, "Введите имя ТГ канала в формате @name")
+		msg := tgbotapi.NewMessage(chatID, "Введите имя ТГ канала, или ссылку на канал")
 		msg.ReplyMarkup = keyboard
 		if _, err := bot.Send(msg); err != nil {
 			return err
 		}
 		return nil
 
-	//--------------------------------------------------------------------------------------------------------------
 	case "Скорость речи":
 		keyboard := tgbotapi.NewReplyKeyboard(
 			tgbotapi.NewKeyboardButtonRow(
@@ -99,30 +102,23 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 		)
 		keyboard.ResizeKeyboard = true
 		keyboard.Selective = false
-		msg := tgbotapi.NewMessage(chatID, "Выберите скорость речи:")
-		msg.ReplyMarkup = keyboard
-		if _, err := bot.Send(msg); err != nil {
-			return err
-		}
-		return nil
-	case "0.5", "0.75", "1.0", "1.2", "1.5", "2.0":
-		rate, _ := strconv.ParseFloat(text, 64)
-		uc.userRequests[chatID].SpeakingRate = rate
-		keyboard := tgbotapi.NewReplyKeyboard(
-			tgbotapi.NewKeyboardButtonRow(
-				tgbotapi.NewKeyboardButton("Назад"),
-			),
-		)
-		keyboard.ResizeKeyboard = true
-		keyboard.Selective = false
-		msg := tgbotapi.NewMessage(chatID, "Скорость сохранена: "+text)
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Выберите скорость речи (время: %d)", time.Now().Unix()))
 		msg.ReplyMarkup = keyboard
 		if _, err := bot.Send(msg); err != nil {
 			return err
 		}
 		return nil
 
-		//--------------------------------------------------------------------------------------------------------------
+	case "0.5", "0.75", "1.0", "1.2", "1.5", "2.0":
+		rate, _ := strconv.ParseFloat(text, 64)
+		uc.userRequests[chatID].SpeakingRate = rate
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Скорость сохранена: %s. Выберите действие:", text))
+		msg.ReplyMarkup = MainKeyboard
+		if _, err := bot.Send(msg); err != nil {
+			return err
+		}
+		return nil
+
 	case "Период времени":
 		keyboard := tgbotapi.NewReplyKeyboard(
 			tgbotapi.NewKeyboardButtonRow(
@@ -147,53 +143,29 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 			return err
 		}
 		return nil
+
 	case "1", "2", "3", "4", "5", "6":
-		var period time.Duration
 		period01, _ := strconv.Atoi(text)
-		period = time.Duration(period01)
-		uc.userRequests[chatID].TimePeriod = period
-		keyboard := tgbotapi.NewReplyKeyboard(
-			tgbotapi.NewKeyboardButtonRow(
-				tgbotapi.NewKeyboardButton("Назад"),
-			),
-		)
-		keyboard.ResizeKeyboard = true
-		keyboard.Selective = false
-		msg := tgbotapi.NewMessage(chatID, "Период сохранён: "+text)
-		msg.ReplyMarkup = keyboard
+		uc.userRequests[chatID].TimePeriod = time.Duration(period01)
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Период сохранён: %s. Выберите действие:", text))
+		msg.ReplyMarkup = MainKeyboard
 		if _, err := bot.Send(msg); err != nil {
 			return err
 		}
 		return nil
 
-		//--------------------------------------------------------------------------------------------------------------
 	case "Назад":
-		slog.Info("Возврат в главное меню", "chatID", chatID)
-		keyboard := tgbotapi.NewReplyKeyboard(
-			tgbotapi.NewKeyboardButtonRow(
-				tgbotapi.NewKeyboardButton("Выбрать канал"),
-				tgbotapi.NewKeyboardButton("Скорость речи"),
-			),
-			tgbotapi.NewKeyboardButtonRow(
-				tgbotapi.NewKeyboardButton("Период времени"),
-				tgbotapi.NewKeyboardButton("Отправить"),
-			),
-		)
-		keyboard.ResizeKeyboard = true
-		keyboard.Selective = false
 		msg := tgbotapi.NewMessage(chatID, "Вернулись в главное меню. Выберите действие:")
-		msg.ReplyMarkup = keyboard
+		msg.ReplyMarkup = MainKeyboard
 		if _, err := bot.Send(msg); err != nil {
 			return err
 		}
 		return nil
 
-		//--------------------------------------------------------------------------------------------------------------
 	case "Отправить":
 		request := uc.userRequests[chatID]
 		request.ChatID = chatID
 
-		// Валидация
 		if request.NameChanel == "" {
 			msg := tgbotapi.NewMessage(chatID, "Ошибка: Не выбран канал. Пожалуйста, выберите канал перед отправкой.")
 			if _, err := bot.Send(msg); err != nil {
@@ -202,10 +174,10 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 			return nil
 		}
 		if request.TimePeriod == 0 {
-			request.TimePeriod = 1 // Значение по умолчанию: 1 час
+			request.TimePeriod = 1
 		}
 		if request.SpeakingRate == 0 {
-			request.SpeakingRate = 1.0 // Значение по умолчанию: 1.0
+			request.SpeakingRate = 1.0
 		}
 
 		jsonData, err := json.Marshal(request)
@@ -216,14 +188,14 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 
 		resp, err := http.Post("http://localhost:4000/tgBotPost", "application/json", bytes.NewBuffer(jsonData))
 		if err != nil {
-			slog.Error("Ошибка отправки запроса на бэкэнд", "error", err)
+			slog.Error("Ошибка отправки запроса на сервер", "error", err)
 			msg := tgbotapi.NewMessage(chatID, "Приносим извинения за неудобства! Ошибка при отправке запроса на сервер. Повторите попытку позже.")
 			bot.Send(msg)
 			return err
 		}
 		defer resp.Body.Close()
 
-		if resp.StatusCode != http.StatusOK {
+		if resp.StatusCode != http.StatusAccepted {
 			slog.Warn("Бэкэнд вернул неуспешный статус", "status", resp.Status)
 			msg := tgbotapi.NewMessage(chatID, "Приносим извинения за неудобства! На удаленном сервере произошла ошибка, пожалуйста, повторите попытку позже.")
 			bot.Send(msg)
@@ -234,9 +206,8 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 		if _, err := bot.Send(msg); err != nil {
 			return err
 		}
-		slog.Info("Запрос отправлен на бэкэнд", "request", request)
+		slog.Info("Запрос отправлен на сервер", "request", request)
 
-		// Очистка значений после успешной отправки
 		uc.userRequests[chatID].TimePeriod = 0
 		uc.userRequests[chatID].SpeakingRate = 0
 		uc.userRequests[chatID].NameChanel = ""
@@ -245,18 +216,17 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 		return nil
 
 	default:
-		// Обработка ввода имени канала, если ожидается
 		if uc.userRequests[chatID].AwaitingChannelInput {
-			if len(text) > 0 && text[0] == '@' {
+			if len(text) > 0 { //&& text[0] == '@'
 				if len(text) == 1 {
-					msg := tgbotapi.NewMessage(chatID, "Ошибка: Введите имя канала после @.")
+					msg := tgbotapi.NewMessage(chatID, "Ошибка: Введите имя канала")
 					if _, err := bot.Send(msg); err != nil {
 						return err
 					}
 					return nil
 				}
 				uc.userRequests[chatID].NameChanel = text
-				uc.userRequests[chatID].AwaitingChannelInput = false // Сбрасываем состояние после успешного ввода
+				uc.userRequests[chatID].AwaitingChannelInput = false
 				keyboard := tgbotapi.NewReplyKeyboard(
 					tgbotapi.NewKeyboardButtonRow(
 						tgbotapi.NewKeyboardButton("Назад"),
@@ -264,8 +234,9 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 				)
 				keyboard.ResizeKeyboard = true
 				keyboard.Selective = false
-				msg := tgbotapi.NewMessage(chatID, "Канал сохранён: "+text)
-				msg.ReplyMarkup = keyboard
+				// Отправляем сообщение о сохранении канала и сразу возвращаемся в главное меню
+				msg := tgbotapi.NewMessage(chatID, "Канал сохранён: "+text+". Выберите действие:")
+				msg.ReplyMarkup = MainKeyboard // Используем главную клавиатуру
 				if _, err := bot.Send(msg); err != nil {
 					return err
 				}
@@ -279,20 +250,8 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 			}
 		}
 
-		keyboard := tgbotapi.NewReplyKeyboard(
-			tgbotapi.NewKeyboardButtonRow(
-				tgbotapi.NewKeyboardButton("Выбрать канал"),
-				tgbotapi.NewKeyboardButton("Скорость голоса"),
-			),
-			tgbotapi.NewKeyboardButtonRow(
-				tgbotapi.NewKeyboardButton("Период времени"),
-				tgbotapi.NewKeyboardButton("Отправить"),
-			),
-		)
-		keyboard.ResizeKeyboard = true
-		keyboard.Selective = false
 		msg := tgbotapi.NewMessage(chatID, "Пожалуйста, выберите действие:")
-		msg.ReplyMarkup = keyboard
+		msg.ReplyMarkup = MainKeyboard
 		if _, err := bot.Send(msg); err != nil {
 			return err
 		}
