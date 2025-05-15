@@ -1,14 +1,23 @@
 package main
 
 import (
+	//"fmt"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"log"
 	"log/slog"
-	"os"
-	"strconv"
-	"tolko_talk/internal/app_text_to_speech"
+	//"net/http"
+	//"os"
 
 	"github.com/joho/godotenv"
-	"tolko_talk/internal/app_telega"
+
+	//"tolko_talk/internal/app_telega"
+	//"tolko_talk/internal/app_text_to_speech"
+	"tolko_talk/internal/config"
+	"tolko_talk/internal/tg_bot_handler"
+	"tolko_talk/internal/tg_bot_init"
+	//"tolko_talk/internal/tg_bot_router"
+	"tolko_talk/internal/tg_bot_usecase"
+	"tolko_talk/tools/logger"
 )
 
 const (
@@ -19,6 +28,10 @@ const (
 )
 
 func main() {
+	// Инициализируем глобальный логгер
+	slog.SetDefault(logger.NewColorLogger())
+	slog.Info("Запустили обертку logger")
+
 	// Загружаем файл .env
 	err := godotenv.Load(pathEnv)
 	if err != nil {
@@ -26,49 +39,66 @@ func main() {
 	}
 	slog.Info("Прочитали файл .env")
 
-	// Получаем переменные окружения
-	apiIDStr := os.Getenv("API_ID")
-	if apiIDStr == "" {
-		log.Fatal("Ошибка: API_ID не задан в .env")
-	}
-	apiID, err := strconv.Atoi(apiIDStr)
+	// Инициализируем объект config
+	cfg, err := config.LoadConfig()
 	if err != nil {
-		log.Fatalf("Ошибка при переводе API_ID в int: %v %v", err, apiID)
+		log.Fatalf("Ошибка чтения .env файла: %v", err)
 	}
-	apiHash := os.Getenv("API_HASH")
-	if apiHash == "" {
-		log.Fatal("Ошибка: API_HASH не задан в .env")
-	}
-	channelName := os.Getenv("CHANNEL_NAME")
-	if channelName == "" {
-		log.Fatal("Ошибка: CHANNEL_USERNAME не задан в .env")
-	}
-	if len(channelName) > 0 && channelName[0] == '@' { // Убираем @ из имени канала
-		channelName = channelName[1:]
-	}
-	phone := os.Getenv("PHONE")
-	if phone == "" {
-		log.Fatal("Ошибка: PHONE не задан в .env")
-	}
-	password := os.Getenv("TWO_FACTOR_AUTH")
-	if password == "" {
-		log.Fatal("Ошибка: TWO_FACTOR_AUTH не задан в .env")
-	}
-	keyToSpeech := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
-	if keyToSpeech == "" {
-		log.Fatal("Ошибка: GOOGLE_APPLICATION_CREDENTIALS не задан в .env")
-	}
-	//slog.Info(fmt.Sprintf("Мой TWO_FACTOR_AUTH из .env: %s", twoFactorAuth))
-	slog.Info("Создали переменные API данных")
+	slog.Info("Создали объект config")
 
-	// Запускаем парсинг канала телеги
-	textNews, err := app_telega.RunTelegaApp(apiID, apiHash, channelName, phone, password, timeNews)
+	// Инициализируем объект бота
+	tgBotClient, err := tg_bot_init.NewBot(cfg.TG_Bot_Token)
 	if err != nil {
-		log.Fatalf("Ошибка функции RunTelegaApp: %v", err)
+		log.Fatalf("Ошибка инициализации бота: %v", err)
+	}
+	slog.Info("Создали объект tgBotClient")
+
+	// Инициализируем объект бизнес-логика
+	tgBotUseCase := tg_bot_usecase.NewUseCase()
+	slog.Info("Создали объект tgBotUseCase")
+
+	// Инициализируем объект tgBotHandler
+	tgBotHandler := tg_bot_handler.NewHandler(tgBotUseCase) // передаём usecase в хендлеры
+	slog.Info("Создали объект tgBotHandler")
+
+	// Инициализируем объект tgBotRouter
+	//tgBotRouter := tg_bot_router.NewRouter(tgBotClient, tgBotHandler)
+	//slog.Info("Создали объект tgBotRouter")
+	// Удаляем старый вебхук, если он был
+	//_, err = tgBotClient.Request(tgbotapi.NewWebhook(""))
+	//if err != nil {
+	//	slog.Warn("Не удалось удалить вебхук", "error", err)
+	//}
+
+	// Настраиваем получение обновлений через GetUpdates
+	updateConfig := tgbotapi.NewUpdate(0)
+	updateConfig.Timeout = 60
+	updates := tgBotClient.GetUpdatesChan(updateConfig)
+	slog.Info("Бот запущен и ожидает обновления")
+
+	// Обрабатываем обновления
+	for update := range updates {
+		if update.Message != nil {
+			slog.Info("Получено сообщение", "text", update.Message.Text, "chatID", update.Message.Chat.ID)
+			tgBotHandler.HandleMessage(tgBotClient, update.Message)
+		}
 	}
 
-	// Запускаем перевод текста в аудио
-	if err := app_text_to_speech.SynthesizeText(textNews, keyToSpeech, mp3Paht, SpeakingRate); err != nil {
-		log.Fatalf("Ошибка функции SynthesizeText: %v", err)
-	}
+	//http.HandleFunc("/"+cfg.TG_Bot_Token, tgBotRouter.HandleUpdate)
+	//slog.Info(fmt.Sprintf("Запуск сервера на: %v\n", cfg.TG_Bot_WebHost))
+	//if err := http.ListenAndServe(cfg.TG_Bot_WebHost, nil); err != nil {
+	//	slog.Error("Сервер не запустился", "error", err)
+	//	os.Exit(1)
+	//}
 }
+
+//// Запускаем парсинг канала телеги
+//textNews, err := app_telega.RunTelegaApp(apiID, apiHash, channelName, phone, password, timeNews)
+//if err != nil {
+//	log.Fatalf("Ошибка функции RunTelegaApp: %v", err)
+//}
+//
+//// Запускаем перевод текста в аудио
+//if err := app_text_to_speech.SynthesizeText(textNews, keyToSpeech, mp3Paht, SpeakingRate); err != nil {
+//	log.Fatalf("Ошибка функции SynthesizeText: %v", err)
+//}

@@ -30,7 +30,9 @@ Thumbs.db
 # Project specific
 docs/
 tmp/
-logs/ 
+logs/
+tools/
+project-files.txt
 
 README.md
 
