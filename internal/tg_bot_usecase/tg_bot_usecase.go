@@ -62,27 +62,10 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 		return nil
 	}
 
+	//--------------------------------------------------------------------------------------------------------------
 	switch text {
 	case "Выбрать канал":
-		keyboard := tgbotapi.NewReplyKeyboard(
-			tgbotapi.NewKeyboardButtonRow(
-				tgbotapi.NewKeyboardButton("@rian_ru"),
-				tgbotapi.NewKeyboardButton("@cpa_lenta"),
-			),
-			tgbotapi.NewKeyboardButtonRow(
-				tgbotapi.NewKeyboardButton("Назад"),
-			),
-		)
-		keyboard.ResizeKeyboard = true
-		keyboard.Selective = false
-		msg := tgbotapi.NewMessage(chatID, "Выберите канал:")
-		msg.ReplyMarkup = keyboard
-		if _, err := bot.Send(msg); err != nil {
-			return err
-		}
-		return nil
-	case "@rian_ru", "@cpa_lenta":
-		uc.userRequests[chatID].NameChanel = text
+		uc.userRequests[chatID].AwaitingChannelInput = true // Устанавливаем состояние ожидания ввода канала
 		keyboard := tgbotapi.NewReplyKeyboard(
 			tgbotapi.NewKeyboardButtonRow(
 				tgbotapi.NewKeyboardButton("Назад"),
@@ -90,13 +73,14 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 		)
 		keyboard.ResizeKeyboard = true
 		keyboard.Selective = false
-		msg := tgbotapi.NewMessage(chatID, "Канал сохранён: "+text)
+		msg := tgbotapi.NewMessage(chatID, "Введите имя ТГ канала в формате @name")
 		msg.ReplyMarkup = keyboard
 		if _, err := bot.Send(msg); err != nil {
 			return err
 		}
 		return nil
 
+	//--------------------------------------------------------------------------------------------------------------
 	case "Скорость голоса":
 		keyboard := tgbotapi.NewReplyKeyboard(
 			tgbotapi.NewKeyboardButtonRow(
@@ -138,6 +122,7 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 		}
 		return nil
 
+		//--------------------------------------------------------------------------------------------------------------
 	case "Период времени":
 		keyboard := tgbotapi.NewReplyKeyboard(
 			tgbotapi.NewKeyboardButtonRow(
@@ -181,6 +166,7 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 		}
 		return nil
 
+		//--------------------------------------------------------------------------------------------------------------
 	case "Назад":
 		slog.Info("Возврат в главное меню", "chatID", chatID)
 		keyboard := tgbotapi.NewReplyKeyboard(
@@ -202,6 +188,7 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 		}
 		return nil
 
+		//--------------------------------------------------------------------------------------------------------------
 	case "Отправить":
 		request := uc.userRequests[chatID]
 
@@ -257,6 +244,40 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 		return nil
 
 	default:
+		// Обработка ввода имени канала, если ожидается
+		if uc.userRequests[chatID].AwaitingChannelInput {
+			if len(text) > 0 && text[0] == '@' {
+				if len(text) == 1 {
+					msg := tgbotapi.NewMessage(chatID, "Ошибка: Введите имя канала после @.")
+					if _, err := bot.Send(msg); err != nil {
+						return err
+					}
+					return nil
+				}
+				uc.userRequests[chatID].NameChanel = text
+				uc.userRequests[chatID].AwaitingChannelInput = false // Сбрасываем состояние после успешного ввода
+				keyboard := tgbotapi.NewReplyKeyboard(
+					tgbotapi.NewKeyboardButtonRow(
+						tgbotapi.NewKeyboardButton("Назад"),
+					),
+				)
+				keyboard.ResizeKeyboard = true
+				keyboard.Selective = false
+				msg := tgbotapi.NewMessage(chatID, "Канал сохранён: "+text)
+				msg.ReplyMarkup = keyboard
+				if _, err := bot.Send(msg); err != nil {
+					return err
+				}
+				return nil
+			} else {
+				msg := tgbotapi.NewMessage(chatID, "Ошибка: Имя канала должно начинаться с @. Введите заново.")
+				if _, err := bot.Send(msg); err != nil {
+					return err
+				}
+				return nil
+			}
+		}
+
 		keyboard := tgbotapi.NewReplyKeyboard(
 			tgbotapi.NewKeyboardButtonRow(
 				tgbotapi.NewKeyboardButton("Выбрать канал"),
