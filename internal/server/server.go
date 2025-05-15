@@ -15,24 +15,27 @@ import (
 	"tolko_talk/internal/model/tg_bot_model"
 )
 
+// HandleSubmit принимает конфиг и экземпляр бота Telegram API,
+// обрабатывает запрос /tgBotPost
 func HandleSubmit(cfg *config.Config, bot *tgbotapi.BotAPI) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		const lbl = "internal/server/server.go/HandleSubmit()"
 		logger := logger.NewColorLogger(lbl)
 		slog.SetDefault(logger)
 
+		// Проверяем, что метод запроса является POST, иначе возвращаем ошибку 405
 		if r.Method != http.MethodPost {
 			http.Error(w, "Метод не поддерживается", http.StatusMethodNotAllowed)
 			return
 		}
 
+		// Декодируем JSON из тела запроса в структуру request, при ошибке возвращаем 400
 		var request tg_bot_model.TgBotRequest // var request TgBotRequest
 		if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 			http.Error(w, "Неверный формат данных", http.StatusBadRequest)
 			return
 		}
-
-		slog.Info(fmt.Sprintf("Запрос от TG Bota: %+v\n", request))
+		slog.Info(fmt.Sprintf("Тело запроса от TG Bota: %+v\n", request))
 
 		// Убираем @ из имени канала
 		if len(request.NameChanel) > 0 && request.NameChanel[0] == '@' {

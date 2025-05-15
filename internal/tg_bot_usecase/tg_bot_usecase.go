@@ -37,14 +37,14 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 	if _, ok := uc.userRequests[chatID]; !ok {
 		uc.userRequests[chatID] = &tg_bot_model.TgBotRequest{}
 	}
-	slog.Info("Обрабатываем сообщение", "text", text, "chatID", chatID)
+	//slog.Info("Обрабатываем сообщение", "text", text, "chatID", chatID)
 
 	if text == "/start" {
 		slog.Info("Обработка команды /start", "chatID", chatID)
 		keyboard := tgbotapi.NewReplyKeyboard(
 			tgbotapi.NewKeyboardButtonRow(
 				tgbotapi.NewKeyboardButton("Выбрать канал"),
-				tgbotapi.NewKeyboardButton("Скорость голоса"),
+				tgbotapi.NewKeyboardButton("Скорость речи"),
 			),
 			tgbotapi.NewKeyboardButtonRow(
 				tgbotapi.NewKeyboardButton("Период времени"),
@@ -81,7 +81,7 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 		return nil
 
 	//--------------------------------------------------------------------------------------------------------------
-	case "Скорость голоса":
+	case "Скорость речи":
 		keyboard := tgbotapi.NewReplyKeyboard(
 			tgbotapi.NewKeyboardButtonRow(
 				tgbotapi.NewKeyboardButton("0.5"),
@@ -99,7 +99,7 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 		)
 		keyboard.ResizeKeyboard = true
 		keyboard.Selective = false
-		msg := tgbotapi.NewMessage(chatID, "Выберите скорость:")
+		msg := tgbotapi.NewMessage(chatID, "Выберите скорость речи:")
 		msg.ReplyMarkup = keyboard
 		if _, err := bot.Send(msg); err != nil {
 			return err
@@ -217,7 +217,7 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 		resp, err := http.Post("http://localhost:4000/tgBotPost", "application/json", bytes.NewBuffer(jsonData))
 		if err != nil {
 			slog.Error("Ошибка отправки запроса на бэкэнд", "error", err)
-			msg := tgbotapi.NewMessage(chatID, "Ошибка при отправке запроса на сервер.")
+			msg := tgbotapi.NewMessage(chatID, "Приносим извинения за неудобства! Ошибка при отправке запроса на сервер. Повторите попытку позже.")
 			bot.Send(msg)
 			return err
 		}
@@ -225,7 +225,7 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 
 		if resp.StatusCode != http.StatusOK {
 			slog.Warn("Бэкэнд вернул неуспешный статус", "status", resp.Status)
-			msg := tgbotapi.NewMessage(chatID, "Бэкэнд вернул ошибку.")
+			msg := tgbotapi.NewMessage(chatID, "Приносим извинения за неудобства! На удаленном сервере произошла ошибка, пожалуйста, повторите попытку позже.")
 			bot.Send(msg)
 			return fmt.Errorf("неуспешный статус от бэкэнда: %d", resp.StatusCode)
 		}
