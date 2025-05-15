@@ -9,7 +9,7 @@ import (
 
 type Config struct {
 	TG_Bot_Token         string
-	TG_Bot_WebHost       string
+	ServerPort           string
 	TG_Api_ID            int
 	TG_Api_API_Hash      string
 	Chanel_Name          string
@@ -25,8 +25,8 @@ func LoadConfig() (*Config, error) {
 	if tgBotToken == "" {
 		return nil, errors.New("переменная окружения TELEGRAM_BOT_TOKEN пуста")
 	}
-	tgBotWebHost := os.Getenv("TELEGRAM_BOT_PORT")
-	if tgBotWebHost == "" {
+	serverPort := os.Getenv("SERVER_PORT")
+	if serverPort == "" {
 		return nil, errors.New("переменная окружения TELEGRAM_BOT_PORT пуста")
 	}
 	apiIDStr := os.Getenv("API_ID")
@@ -63,7 +63,7 @@ func LoadConfig() (*Config, error) {
 
 	return &Config{
 		TG_Bot_Token:         tgBotToken,
-		TG_Bot_WebHost:       tgBotWebHost,
+		ServerPort:           serverPort,
 		TG_Api_ID:            apiID,
 		TG_Api_API_Hash:      apiHash,
 		Chanel_Name:          channelName,

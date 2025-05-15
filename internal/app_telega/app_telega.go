@@ -8,6 +8,7 @@ import (
 	"os"
 	"strings"
 	"time"
+	"tolko_talk/tools/logger"
 
 	//"github.com/gotd/td/session"
 	"github.com/gotd/td/telegram"
@@ -66,7 +67,11 @@ func (c *customCodeAuthenticator) SignUp(_ context.Context) (auth.UserInfo, erro
 // ---------------------------------------------------------------------------------------------------------------------
 
 // RunTelegaApp запускает клиент телеги и парсит нужный канал
-func RunTelegaApp(apiID int, apiHash, channelName, phone, password string, timeNews time.Duration) (string, error) {
+func RunTelegaApp(apiID int, apiHash, channelName, phone, password string, timePeriod time.Duration) (string, error) {
+	const lbl = "internal/app_telega/app_telega.go/RunTelegaApp()"
+	logger := logger.NewColorLogger(lbl)
+	slog.SetDefault(logger)
+
 	var resultMessage strings.Builder // Используем strings.Builder для сборки текста
 
 	// Настройка хранилища сессии в файл
@@ -141,7 +146,7 @@ func RunTelegaApp(apiID int, apiHash, channelName, phone, password string, timeN
 		}
 
 		// Определяем временной порог
-		timeThreshold := time.Now().Add(-timeNews * time.Minute)
+		timeThreshold := time.Now().Add(-timePeriod * time.Hour)
 
 		// Запрашиваем сообщения
 		messages, err := api.MessagesGetHistory(ctx, &tg.MessagesGetHistoryRequest{
@@ -187,7 +192,7 @@ func RunTelegaApp(apiID int, apiHash, channelName, phone, password string, timeN
 			resultMessage.WriteString(messageText)
 
 			// Выводим данные
-			fmt.Printf("%s, %s\n", msgTime.Format("15:04"), cleanMessage)
+			//fmt.Printf("%s, %s\n", msgTime.Format("15:04"), cleanMessage)
 		}
 
 		return nil

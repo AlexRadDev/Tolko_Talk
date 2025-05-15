@@ -1,21 +1,18 @@
 package main
 
 import (
-	//"fmt"
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"log"
 	"log/slog"
-	//"net/http"
-	//"os"
 
 	"github.com/joho/godotenv"
 
 	//"tolko_talk/internal/app_telega"
 	//"tolko_talk/internal/app_text_to_speech"
 	"tolko_talk/internal/config"
+	"tolko_talk/internal/server"
 	"tolko_talk/internal/tg_bot_handler"
 	"tolko_talk/internal/tg_bot_init"
-	//"tolko_talk/internal/tg_bot_router"
 	"tolko_talk/internal/tg_bot_usecase"
 	"tolko_talk/tools/logger"
 )
@@ -28,8 +25,10 @@ const (
 )
 
 func main() {
-	// Инициализируем глобальный логгер
-	slog.SetDefault(logger.NewColorLogger())
+	const lbl = "cmd/main.go/main()"
+	logger := logger.NewColorLogger(lbl)
+	slog.SetDefault(logger)
+
 	slog.Info("Запустили обертку logger")
 
 	// Загружаем файл .env
@@ -61,20 +60,14 @@ func main() {
 	tgBotHandler := tg_bot_handler.NewHandler(tgBotUseCase) // передаём usecase в хендлеры
 	slog.Info("Создали объект tgBotHandler")
 
-	// Инициализируем объект tgBotRouter
-	//tgBotRouter := tg_bot_router.NewRouter(tgBotClient, tgBotHandler)
-	//slog.Info("Создали объект tgBotRouter")
-	// Удаляем старый вебхук, если он был
-	//_, err = tgBotClient.Request(tgbotapi.NewWebhook(""))
-	//if err != nil {
-	//	slog.Warn("Не удалось удалить вебхук", "error", err)
-	//}
-
 	// Настраиваем получение обновлений через GetUpdates
 	updateConfig := tgbotapi.NewUpdate(0)
 	updateConfig.Timeout = 60
 	updates := tgBotClient.GetUpdatesChan(updateConfig)
 	slog.Info("Бот запущен и ожидает обновления")
+
+	// Запуск сервера
+	go server.StartServer(cfg)
 
 	// Обрабатываем обновления
 	for update := range updates {
@@ -83,22 +76,16 @@ func main() {
 			tgBotHandler.HandleMessage(tgBotClient, update.Message)
 		}
 	}
-
-	//http.HandleFunc("/"+cfg.TG_Bot_Token, tgBotRouter.HandleUpdate)
-	//slog.Info(fmt.Sprintf("Запуск сервера на: %v\n", cfg.TG_Bot_WebHost))
-	//if err := http.ListenAndServe(cfg.TG_Bot_WebHost, nil); err != nil {
-	//	slog.Error("Сервер не запустился", "error", err)
-	//	os.Exit(1)
-	//}
 }
 
-//// Запускаем парсинг канала телеги
-//textNews, err := app_telega.RunTelegaApp(apiID, apiHash, channelName, phone, password, timeNews)
-//if err != nil {
-//	log.Fatalf("Ошибка функции RunTelegaApp: %v", err)
-//}
 //
 //// Запускаем перевод текста в аудио
 //if err := app_text_to_speech.SynthesizeText(textNews, keyToSpeech, mp3Paht, SpeakingRate); err != nil {
 //	log.Fatalf("Ошибка функции SynthesizeText: %v", err)
+//}
+
+// Удаляем старый вебхук, если он был
+//_, err = tgBotClient.Request(tgbotapi.NewWebhook(""))
+//if err != nil {
+//	slog.Warn("Не удалось удалить вебхук", "error", err)
 //}

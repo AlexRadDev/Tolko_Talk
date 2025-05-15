@@ -2,18 +2,22 @@ package tg_bot_init
 
 import (
 	"fmt"
-	"log/slog"
-
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"log/slog"
 )
 
+// Функция NewBot создаёт нового Telegram-бота с использованием переданного токена
 func NewBot(token string) (*tgbotapi.BotAPI, error) {
+	// Создаём нового бота с помощью токена
 	bot, err := tgbotapi.NewBotAPI(token)
 	if err != nil {
 		return nil, err
 	}
-
-	bot.Debug = true // отключить в проде
 	slog.Info(fmt.Sprintf("Бот успешно авторизован как: @%s", bot.Self.UserName))
+
+	// Включаем режим отладки для бота (в продакшене рекомендуется отключить)
+	bot.Debug = true // отключить на проде
+
+	// Возвращаем указатель на созданного бота и nil в качестве ошибки
 	return bot, nil
 }

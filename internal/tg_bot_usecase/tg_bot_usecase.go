@@ -1,8 +1,13 @@
 package tg_bot_usecase
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/http"
+	"time"
+	"tolko_talk/tools/logger"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"strconv"
@@ -25,6 +30,10 @@ func NewUseCase() *UseCase {
 // принимает Telegram API клиент, ID чата и текст сообщения
 // возвращает ошибку, если что-то пошло не так при отправке ответа
 func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string) error {
+	const lbl = "internal/tg_bot_usecase/tg_bot_usecase.go/HandleMessage()"
+	logger := logger.NewColorLogger(lbl)
+	slog.SetDefault(logger)
+
 	if _, ok := uc.userRequests[chatID]; !ok {
 		uc.userRequests[chatID] = &tg_bot_model.TgBotRequest{}
 	}
@@ -56,11 +65,13 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 	}
 
 	switch text {
+
+	//------------------------------------------------------------------------------------------------------------------
 	case "Выбрать канал":
 		keyboard := tgbotapi.NewReplyKeyboard(
 			tgbotapi.NewKeyboardButtonRow(
-				tgbotapi.NewKeyboardButton("@intercargon5"),
-				tgbotapi.NewKeyboardButton("@technewsdaily"),
+				tgbotapi.NewKeyboardButton("@rian_ru"),
+				tgbotapi.NewKeyboardButton("@cpa_lenta"),
 			),
 			tgbotapi.NewKeyboardButtonRow(
 				tgbotapi.NewKeyboardButton("Назад"),
@@ -70,7 +81,7 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 		msg.ReplyMarkup = keyboard
 		_, err := bot.Send(msg)
 		return err
-	case "@intercargon5", "@technewsdaily":
+	case "@rian_ru", "@cpa_lenta":
 		uc.userRequests[chatID].NameChanel = text
 		keyboard := tgbotapi.NewReplyKeyboard(
 			tgbotapi.NewKeyboardButtonRow(
@@ -81,6 +92,8 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 		msg.ReplyMarkup = keyboard
 		_, err := bot.Send(msg)
 		return err
+
+		//------------------------------------------------------------------------------------------------------------------
 	case "Скорость голоса":
 		keyboard := tgbotapi.NewReplyKeyboard(
 			tgbotapi.NewKeyboardButtonRow(
@@ -113,6 +126,8 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 		msg.ReplyMarkup = keyboard
 		_, err := bot.Send(msg)
 		return err
+
+		//------------------------------------------------------------------------------------------------------------------
 	case "Период времени":
 		keyboard := tgbotapi.NewReplyKeyboard(
 			tgbotapi.NewKeyboardButtonRow(
@@ -134,7 +149,9 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 		_, err := bot.Send(msg)
 		return err
 	case "1", "2", "3", "4", "5", "6":
-		period, _ := strconv.Atoi(text)
+		var period time.Duration
+		period01, _ := strconv.Atoi(text)
+		period = time.Duration(period01)
 		uc.userRequests[chatID].TimePeriod = period
 		keyboard := tgbotapi.NewReplyKeyboard(
 			tgbotapi.NewKeyboardButtonRow(
@@ -162,16 +179,50 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 		msg.ReplyMarkup = keyboard
 		_, err := bot.Send(msg)
 		return err
+
+		//------------------------------------------------------------------------------------------------------------------
 	case "Отправить":
 		request := uc.userRequests[chatID]
-		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Отправлен запрос: Канал: %s, Скорость: %.1f, Период: %d", request.NameChanel, request.SpeakingRate, request.TimePeriod))
-		_, err := bot.Send(msg)
+		// Подготовка данных для отправки на бэкэнд
+		//data := map[string]interface{}{
+		//	"name_chanel":   request.NameChanel,
+		//	"speaking_rate": request.SpeakingRate,
+		//	"time_period":   request.TimePeriod,
+		//}
+		jsonData, err := json.Marshal(request)
+		if err != nil {
+			slog.Error("Ошибка сериализации JSON", "error", err)
+			return err
+		}
+
+		// Отправка POST-запроса на бэкэнд
+		resp, err := http.Post("http://localhost:4000/tgBotPost", "application/json", bytes.NewBuffer(jsonData))
+		if err != nil {
+			slog.Error("Ошибка отправки запроса на бэкэнд", "error", err)
+			msg := tgbotapi.NewMessage(chatID, "Ошибка при отправке запроса на сервер.")
+			bot.Send(msg)
+			return err
+		}
+		defer resp.Body.Close()
+
+		// Проверка ответа от бэкэнда (опционально)
+		if resp.StatusCode != http.StatusOK {
+			slog.Warn("Бэкэнд вернул неуспешный статус", "status", resp.Status)
+			msg := tgbotapi.NewMessage(chatID, "Бэкэнд вернул ошибку.")
+			bot.Send(msg)
+			return fmt.Errorf("неуспешный статус от бэкэнда: %d", resp.StatusCode)
+		}
+
+		// Успешная отправка
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Запрос успешно отправлен: Канал: %s, Скорость: %.1f, Период: %d", request.NameChanel, request.SpeakingRate, request.TimePeriod))
+		_, err = bot.Send(msg)
 		if err != nil {
 			return err
 		}
-		// Здесь можно добавить отправку на бэкэнд, например, через HTTP-запрос
-		slog.Info("Запрос отправлен", "request", request)
+		slog.Info("Запрос отправлен на бэкэнд", "request", request)
 		return nil
+
+		//------------------------------------------------------------------------------------------------------------------
 	default:
 		keyboard := tgbotapi.NewReplyKeyboard(
 			tgbotapi.NewKeyboardButtonRow(
