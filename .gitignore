@@ -15,7 +15,7 @@ vendor/
 go.work
 
 # Environment files
-.env
+monolith/.env
 
 # IDE specific files
 .idea
@@ -31,10 +31,11 @@ Thumbs.db
 docs/
 tmp/
 logs/
-tools/
-project-files.txt
+monolith/tools/
+monolith/project-files.txt
+monolith/
 
 README.md
 
-semiotic-mender-459813-c9-fdcf02adec5e.json
-session.json
+monolith/semiotic-mender-459813-c9-fdcf02adec5e.json
+monolith/session.json

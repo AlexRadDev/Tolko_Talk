@@ -7,8 +7,6 @@ import (
 
 	"github.com/joho/godotenv"
 
-	//"tolko_talk/internal/app_telega"
-	//"tolko_talk/internal/app_text_to_speech"
 	"tolko_talk/internal/config"
 	"tolko_talk/internal/server"
 	"tolko_talk/internal/tg_bot_handler"
