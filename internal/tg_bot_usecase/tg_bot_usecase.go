@@ -202,7 +202,7 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 			return fmt.Errorf("неуспешный статус от бэкэнда: %d", resp.StatusCode)
 		}
 
-		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Запрос успешно отправлен: Канал: %s, Скорость: %.1f, Период: %d", request.NameChanel, request.SpeakingRate, request.TimePeriod))
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Запрос успешно отправлен: Канал: %s, Скорость: %.1fx, Период: %dчас., пожалуйста дождитесь ответа.", request.NameChanel, request.SpeakingRate, request.TimePeriod))
 		if _, err := bot.Send(msg); err != nil {
 			return err
 		}

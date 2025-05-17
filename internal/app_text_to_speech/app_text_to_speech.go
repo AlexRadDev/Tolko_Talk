@@ -15,7 +15,6 @@ import (
 
 // SynthesizeText по входящему тексту синтэзирует речь
 func SynthesizeText(text, keyToSpeech, outputFile string, speakingRate float64) ([]byte, error) {
-	// Метка функции для логов
 	const lbl = "internal/app_text_to_speech/app_text_to_speech.go/SynthesizeText()"
 	logger := logger.NewColorLogger(lbl)
 	slog.SetDefault(logger)

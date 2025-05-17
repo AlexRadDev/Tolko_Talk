@@ -98,7 +98,6 @@ func RunTelegaApp(apiID int, apiHash, channelName, phone, password string, timeP
 
 		// Если пользователь не авторизован, выполняем авторизацию
 		if !status.Authorized {
-			// Создаем кастомный аутентификатор с паролем из .env
 			authenticator := &customCodeAuthenticator{
 				phone:    phone,
 				password: password,
@@ -186,23 +185,15 @@ func RunTelegaApp(apiID int, apiHash, channelName, phone, password string, timeP
 				break
 			}
 
-			// Удаляем пустые строки
-			//cleanMessage := RemoveEmptyLines(message.Message)
-
 			//messageText := fmt.Sprintf("ID: %d, Дата: %s, Текст: %s\n", message.ID, msgTime, cleanMessage)
 			//messageText := fmt.Sprintf("%s, %s\n", msgTime.Format("15:04"), cleanMessage)
 			messageText := fmt.Sprintf("%s\n", message.Message)
-			//slog.Info(fmt.Sprintf("KSANDR-----01 → messageText: %v", messageText))
 
 			// Добавляем сообщение в resultMessage
 			resultMessage.WriteString(messageText)
-			//slog.Info(fmt.Sprintf("KSANDR-----02 → resultMessage: %v", resultMessage))
-
-			// Выводим данные
-			//fmt.Printf("%s, %s\n", msgTime.Format("15:04"), cleanMessage)
 		}
 
-		//slog.Info(fmt.Sprintf("KSANDR-----03 → resultMessage: %v", resultMessage.String()))
+		// Форматируем текст
 		resultText = RemoveEmptyLines(resultMessage.String())
 
 		return nil
@@ -215,7 +206,9 @@ func RunTelegaApp(apiID int, apiHash, channelName, phone, password string, timeP
 	return resultText, nil
 }
 
-// RemoveEmptyLines Удаляет все пустые строки из текста, и ненужные символы.
+// ---------------------------------------------------------------------------------------------------------------------
+
+// RemoveEmptyLines Удаляет все пустые строки из текста, и ненужные символы, проверяет оимит в 5000mb
 func RemoveEmptyLines(input string) string {
 	const lbl = "internal/app_telega/app_telega.go/RemoveEmptyLines()"
 	logger := logger.NewColorLogger(lbl)
