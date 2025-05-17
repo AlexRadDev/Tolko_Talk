@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"tg_app_micserv/internal/kafka"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -22,11 +23,13 @@ import (
 	"tg_app_micserv/tools/logger"
 )
 
-const pathEnv = ".env"
+const (
+	pathEnv = ".env"
+	lbl     = "tg_app_micserv/cmd/main.go/main()"
+)
 
 func main() {
 	// Инициализация логера
-	const lbl = "tg_app_micserv/cmd/main.go/main()"
 	logger := logger.NewColorLogger(lbl)
 	slog.SetDefault(logger)
 	slog.Info("Запустили обертку logger")
@@ -62,6 +65,19 @@ func main() {
 	// Создание обработчика HTTP-запросов, передающего в него сервис парсер постов
 	messageHandler := handlers.NewMessageHandler(serviceParser)
 	slog.Info("Успешно создали объект обработчика HTTP-запросов")
+
+	// Создание kafka Producer-а
+	kafkaProducer, err := kafka.NewProducer(cfg)
+	if err != nil {
+		slog.Error("Не удалось создать Kafka-продюсер", "error", err)
+		log.Fatal(err)
+	}
+	slog.Info("Успешно создали kafka Producer-а")
+	defer func() {
+		if err := kafkaProducer.Close(); err != nil {
+			slog.Error("Ошибка при закрытии Kafka-продюсера", "error", err)
+		}
+	}()
 
 	// Создание сервера
 	srv := server.NewServer(cfg.Port, messageHandler)

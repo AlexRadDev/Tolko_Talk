@@ -19,6 +19,8 @@ type Config struct {
 	Phone          string
 	Two_F_Password string
 	Port           string
+	KafkaPort      string
+	KafkaTopic     string
 }
 
 // Load загружает данные из переменных среды
@@ -62,11 +64,25 @@ func Load() (*Config, error) {
 	}
 	slog.Info("Успешно прочитали PORT")
 
+	kafkaPort := os.Getenv("KAFKA_PORT")
+	if kafkaPort == "" {
+		return nil, errors.New("KAFKA_PORT не указан")
+	}
+	slog.Info("Успешно прочитали KAFKA_PORT")
+
+	kafkaTopic := os.Getenv("KAFKA_TOPIC")
+	if kafkaTopic == "" {
+		return nil, errors.New("KAFKA_TOPIC не указан")
+	}
+	slog.Info("Успешно прочитали KAFKA_TOPIC")
+
 	return &Config{
 		API_ID:         apiID,
 		API_Hash:       apiHash,
 		Phone:          phone,
 		Two_F_Password: password,
 		Port:           port,
+		KafkaPort:      kafkaPort,
+		KafkaTopic:     kafkaTopic,
 	}, nil
 }

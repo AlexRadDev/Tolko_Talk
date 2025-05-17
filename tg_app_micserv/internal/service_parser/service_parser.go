@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"tg_app_micserv/internal/kafka"
 	"time"
 	"unicode/utf8"
 
@@ -17,6 +18,7 @@ import (
 // ServiceParser организует получение и очистку сообщений
 type ServiceParser struct {
 	parser     interfaces.ServiceParser // Интерфейс для получения сообщений
+	producer   kafka.MessageProducer    // Интерфейс для отправки в Kafka
 	formatText interfaces.TextCleaner   // Интерфейс для очистки текста
 }
 
@@ -41,16 +43,25 @@ func (s *ServiceParser) PostParser(ctx context.Context, nameChannel string, time
 	}
 	slog.Info("Успешно спарсили посты")
 
-	// TODO: Переделать, что бы каждое сообщение записывалось в мапу, а мапа отсылалась в Kafka
-	// Создаем строковый билдер для объединения текста всех сообщений
-	var builder strings.Builder
+	// Создаем карту для хранения обработанных сообщений
+	messageMap := make(map[int64]string)
+
+	// Обрабатываем каждое сообщение
 	for _, msg := range messages {
-		builder.WriteString(msg.Text + "\n") // Добавляем каждое сообщение с переводом строки
+		// Очищаем текст сообщения
+		cleanedText := FormatText(msg.Text)
+		if cleanedText != "" {
+			// Используем временную метку как ключ
+			messageMap[msg.Timestamp.Unix()] = cleanedText
+		}
 	}
 
-	// Очищаем объединённый текст с помощью функции CleanText
-	textForAudio := FormatText(builder.String())
-	return textForAudio, nil
+	// Отправляем карту в Kafka
+	if err := s.producer.ProduceMessages(ctx, messageMap); err != nil {
+		return "", fmt.Errorf("ошибка отправки в Kafka: %w", err)
+	}
+
+	return "", nil
 }
 
 //----------------------------------------------------------------------------------------------------------------------
