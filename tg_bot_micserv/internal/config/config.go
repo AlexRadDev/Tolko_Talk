@@ -3,6 +3,8 @@ package config
 import (
 	"fmt"
 	"os"
+
+	"tg_bot/tools/logger"
 )
 
 // Структура Config содержит конфигурационные параметры
@@ -15,6 +17,9 @@ type Config struct {
 
 // Load загружает конфигурацию из переменных окружения
 func Load() (*Config, error) {
+	const lblLoad = "tg_bot_micserv/internal/config/config.go/Load()"
+	myLogger := logger.NewColorLogger(lblLoad)
+
 	token := os.Getenv("TG_BOT_TOKEN")
 	if token == "" {
 		return nil, fmt.Errorf("TG_BOT_TOKEN не указан")
@@ -31,12 +36,14 @@ func Load() (*Config, error) {
 	if kafkaPort == "" {
 		return nil, fmt.Errorf("KAFKA_PORT не указан")
 	}
+	myLogger.Info(fmt.Sprintf("Успешно записали kafkaPort = %v", kafkaPort))
 
 	// Получаем топик Kafka
 	nameTopicKafka := os.Getenv("NAME_KAFKA_TOPIC")
 	if nameTopicKafka == "" {
 		return nil, fmt.Errorf("NAME_KAFKA_TOPIC не указан")
 	}
+	myLogger.Info(fmt.Sprintf("Успешно записали nameTopicKafka = %v", nameTopicKafka))
 
 	return &Config{
 		TGBotToken:     token,

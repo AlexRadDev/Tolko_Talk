@@ -44,8 +44,36 @@ func (r *Router) HandleUpdate(w http.ResponseWriter, req *http.Request) {
 	if update.Message != nil {
 		// Передаём сообщение в бизнес-логику
 		r.tgBotUserCase.HandleMessage(r.tgBot, update.Message.Chat.ID, update.Message.Text)
+		myLogger.Info("Успешно передали запрос в бизнес-логику")
 	}
 
 	// Возвращаем статус 200 OK
 	w.WriteHeader(http.StatusOK)
+}
+
+// ProcessUpdate обрабатывает обновление из Long Polling
+func (r *Router) ProcessUpdate(update tgbotapi.Update) {
+	const lblProcessUpdate = "tg_bot_micserv/internal/tg_bot_router/tg_bot_router.go/ProcessUpdate()"
+	myLogger := logger.NewColorLogger(lblProcessUpdate)
+
+	// Обработка обычных сообщений
+	if update.Message != nil {
+		r.tgBotUserCase.HandleMessage(r.tgBot, update.Message.Chat.ID, update.Message.Text)
+		myLogger.Info("Успешно обработали сообщение")
+		return
+	}
+
+	// Обработка нажатий на кнопки (CallbackQuery)
+	if update.CallbackQuery != nil {
+		// Отвечаем на callback, чтобы убрать часы загрузки с кнопки
+		callback := tgbotapi.NewCallback(update.CallbackQuery.ID, "")
+		if _, err := r.tgBot.Request(callback); err != nil {
+			myLogger.Error("Ошибка при ответе на callback", "error", err)
+		}
+
+		// Обрабатываем данные callback
+		r.tgBotUserCase.HandleCallback(r.tgBot, update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Data)
+		myLogger.Info("Успешно обработали callback")
+		return
+	}
 }

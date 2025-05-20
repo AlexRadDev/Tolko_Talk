@@ -5,7 +5,6 @@ package config
 import (
 	"errors"
 	"fmt"
-	"log/slog"
 	"os"
 	"strconv"
 
@@ -26,8 +25,7 @@ type Config struct {
 // Load загружает данные из переменных среды
 func Load() (*Config, error) {
 	const lbl = "tg_app_micserv/config/config.go/Load()"
-	logger := logger.NewColorLogger(lbl)
-	slog.SetDefault(logger)
+	myLogger := logger.NewColorLogger(lbl)
 
 	apiIDStr := os.Getenv("TELEGRAM_API_ID")
 	if apiIDStr == "" {
@@ -38,43 +36,43 @@ func Load() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("TELEGRAM_API_ID не указан: %w", err)
 	}
-	slog.Info("Успешно прочитали TELEGRAM_API_ID")
+	myLogger.Info("Успешно прочитали TELEGRAM_API_ID")
 
 	apiHash := os.Getenv("TELEGRAM_API_HASH")
 	if apiHash == "" {
 		return nil, errors.New("TELEGRAM_API_HASH не указан")
 	}
-	slog.Info("Успешно прочитали TELEGRAM_API_HASH")
+	myLogger.Info("Успешно прочитали TELEGRAM_API_HASH")
 
 	phone := os.Getenv("PHONE")
 	if phone == "" {
 		return nil, errors.New("PHONE не указан")
 	}
-	slog.Info("Успешно прочитали PHONE")
+	myLogger.Info("Успешно прочитали PHONE")
 
 	password := os.Getenv("TELEGRAM_PASSWORD")
 	if password == "" {
 		return nil, errors.New("TELEGRAM_PASSWORD не указан")
 	}
-	slog.Info("Успешно прочитали TELEGRAM_PASSWORD")
+	myLogger.Info("Успешно прочитали TELEGRAM_PASSWORD")
 
 	port := os.Getenv("PORT")
 	if port == "" {
 		return nil, errors.New("PORT не указан")
 	}
-	slog.Info("Успешно прочитали PORT")
+	myLogger.Info("Успешно прочитали PORT")
 
 	kafkaPort := os.Getenv("KAFKA_PORT")
 	if kafkaPort == "" {
 		return nil, errors.New("KAFKA_PORT не указан")
 	}
-	slog.Info("Успешно прочитали KAFKA_PORT")
+	myLogger.Info("Успешно прочитали KAFKA_PORT")
 
 	kafkaTopic := os.Getenv("KAFKA_TOPIC")
 	if kafkaTopic == "" {
 		return nil, errors.New("KAFKA_TOPIC не указан")
 	}
-	slog.Info("Успешно прочитали KAFKA_TOPIC")
+	myLogger.Info("Успешно прочитали KAFKA_TOPIC")
 
 	return &Config{
 		API_ID:         apiID,

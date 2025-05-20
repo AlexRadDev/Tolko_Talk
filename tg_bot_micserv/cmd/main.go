@@ -1,16 +1,12 @@
 package main
 
 import (
-	"context"
 	"fmt"
+	"github.com/joho/godotenv"
 	"log/slog"
 	"net/http"
 	"os"
-	"os/signal"
-	"syscall"
-	"time"
-
-	"github.com/joho/godotenv"
+	"tg_bot/internal/server"
 
 	"tg_bot/internal/config"
 	"tg_bot/internal/kafka"
@@ -59,7 +55,7 @@ func main() {
 	slog.Info("Успешно создали хранилище для состояния пользователей")
 
 	// Инициализируем Kafka-продюсер
-	kafkaProducer := kafka.NewProducer([]string{cfg.KafkaPort}, cfg.NameTopicKafka)
+	kafkaProducer := kafka.NewProducer(cfg.KafkaPort, cfg.NameTopicKafka) //[]string{cfg.KafkaPort}
 	slog.Info(fmt.Sprintf("Успешно создали Kafka-продюсер, Name Topic: %v", cfg.NameTopicKafka))
 
 	// Создаём слой бизнес-логики, внедряя репозиторий
@@ -69,38 +65,36 @@ func main() {
 	// Создаём HTTP-роутер, внедряя бот и бизнес-логику
 	router := tg_bot_router2.NewRouter(tgBot, userCase)
 
-	// Создаём HTTP-сервер
-	srv := &http.Server{
-		Addr:    cfg.ServerPort,
-		Handler: http.HandlerFunc(router.HandleUpdate),
-	}
+	// Настраиваем Long Polling для получения обновлений
+	updates := tg_bot_init.SetupLongPolling(tgBot)
+	slog.Info("Запущен режим Long Polling для получения обновлений")
 
-	// Создаём канал для получения сигналов ОС (для graceful shutdown)
-	quit := make(chan os.Signal, 1)
-	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
-
-	// Запускаем сервер
+	// Запускаем обработку обновлений в горутине
 	go func() {
-		slog.Info("Запуск HTTP-сервера", "address", cfg.ServerPort)
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("Ошибка работы сервера", "error", err)
+		for update := range updates {
+			router.ProcessUpdate(update)
+		}
+	}()
+
+	// Настраиваем HTTP-мультиплексор для обработки запросов
+	mux := http.NewServeMux() // эта строка Создаёт новый HTTP-мультиплексор (роутер) для обработки HTTP-запросов и сохраняет его в переменную mux.
+	// ServeMux — это структура, которая используется для маршрутизации HTTP-запросов.
+	// Она сопоставляет (т.е. соединяет) URL-пути (например, /tgBotPost) с обработчиками (функциями, которые обрабатывают эти запросы).
+	// Без мультиплексора сервер мог бы обрабатывать только один обработчик для всех запросов.
+	// ServeMux позволяет разделить логику обработки в зависимости от пути (много разных вариантов)
+
+	mux.HandleFunc("/tgBotPost", router.HandleUpdate)
+
+	// Создаём HTTP-сервер
+	srv := server.NewServer(cfg, mux)
+
+	// Запускаем сервер в отдельной горутине
+	go func() {
+		if err := srv.Start(); err != nil {
 			os.Exit(1)
 		}
 	}()
 
-	// Ожидаем сигнал завершения
-	<-quit
-	slog.Info("Получен сигнал завершения, инициируем graceful Shutdown")
-
-	// Создаём контекст с таймаутом для graceful shutdown
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	defer cancel()
-
-	// Выполняем graceful shutdown сервера
-	if err := srv.Shutdown(ctx); err != nil {
-		slog.Error("Ошибка при завершении работы сервера", "error", err)
-		os.Exit(1)
-	}
-
-	slog.Info("Сервер успешно завершил работу")
+	// Ожидаем сигнал завершения и выполняем graceful shutdown
+	srv.WaitForShutdown()
 }
