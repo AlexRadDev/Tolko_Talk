@@ -6,15 +6,15 @@
 package tg_bot_user_case
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
 	"strconv"
+	"tg_bot/internal/kafka/producer"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-	"tg_bot/internal/kafka"
-
 	"tg_bot/internal/repo_user_requests"
 	"tg_bot/tools/logger"
 )
@@ -40,11 +40,11 @@ func init() {
 // Структура UseCase содержит бизнес-логику бота
 type UseCase struct {
 	repo          *repo_user_requests.RepoUserRequests // repo — интерфейс репозитория для работы с данными
-	kafkaProducer *kafka.Producer                      // Указатель на Kafka-продюсер для отправки сообщений
+	kafkaProducer *producer.Producer                   // Указатель на Kafka-продюсер для отправки сообщений
 }
 
 // NewUseCase создаёт новый экземпляр UseCase
-func NewUseCase(repo *repo_user_requests.RepoUserRequests, kafkaProducer *kafka.Producer) *UseCase {
+func NewUseCase(repo *repo_user_requests.RepoUserRequests, kafkaProducer *producer.Producer) *UseCase {
 	return &UseCase{
 		repo:          repo,
 		kafkaProducer: kafkaProducer,
@@ -52,10 +52,10 @@ func NewUseCase(repo *repo_user_requests.RepoUserRequests, kafkaProducer *kafka.
 }
 
 // HandleMessage обрабатывает входящее сообщение от пользователя
-func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string) error {
+func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, text string) error {
 	const lblHandleMessage = "tg_bot_micserv/internal/tg_bot_user_case/tg_bot_user_case.go/HandleMessage()"
 	myLogger := logger.NewColorLogger(lblHandleMessage)
-	slog.SetDefault(myLogger)
+	//slog.SetDefault(myLogger)
 
 	// Получаем запрос пользователя из репозитория
 	request := uc.repo.GetRequest(chatID)
@@ -202,7 +202,7 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 		}
 
 		// Отправка в Kafka
-		err = uc.kafkaProducer.SendMessage(uc.kafkaProducer.Writer.Topic, jsonData)
+		err = uc.kafkaProducer.SendMessage(ctx, uc.kafkaProducer.Writer.Topic, jsonData)
 		if err != nil {
 			myLogger.Error(fmt.Sprintf("Ошибка отправки сообщения в Kafka: %v", err))
 			msg := tgbotapi.NewMessage(chatID, "Ошибка отправки. Повторите позже.")
@@ -263,6 +263,7 @@ func (uc *UseCase) HandleMessage(bot *tgbotapi.BotAPI, chatID int64, text string
 	}
 }
 
+// TODO: Разобраться
 // HandleCallback обрабатывает данные callback-запроса (нажатие на InlineKeyboard кнопки)
 func (uc *UseCase) HandleCallback(bot *tgbotapi.BotAPI, chatID int64, callbackData string) error {
 	const lblHandleCallback = "tg_bot_micserv/internal/tg_bot_user_case/tg_bot_user_case.go/HandleCallback()"

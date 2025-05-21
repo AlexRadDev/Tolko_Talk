@@ -5,6 +5,7 @@
 package tg_bot_router
 
 import (
+	"context"
 	"encoding/json"
 	"net/http"
 
@@ -27,6 +28,8 @@ func NewRouter(tgBot *tgbotapi.BotAPI, tgBotUserCase *tg_bot_user_case.UseCase) 
 
 // HandleUpdate обрабатывает входящий HTTP-запрос с Telegram-обновлением
 func (r *Router) HandleUpdate(w http.ResponseWriter, req *http.Request) {
+	ctx := req.Context()
+
 	const lblHandleUpdate = "tg_bot_micserv/internal/tg_bot_router/tg_bot_router.go/HandleUpdate()"
 	myLogger := logger.NewColorLogger(lblHandleUpdate)
 
@@ -43,7 +46,7 @@ func (r *Router) HandleUpdate(w http.ResponseWriter, req *http.Request) {
 	// Проверяем, содержит ли обновление сообщение
 	if update.Message != nil {
 		// Передаём сообщение в бизнес-логику
-		r.tgBotUserCase.HandleMessage(r.tgBot, update.Message.Chat.ID, update.Message.Text)
+		r.tgBotUserCase.HandleMessage(ctx, r.tgBot, update.Message.Chat.ID, update.Message.Text)
 		myLogger.Info("Успешно передали запрос в бизнес-логику")
 	}
 
@@ -53,12 +56,14 @@ func (r *Router) HandleUpdate(w http.ResponseWriter, req *http.Request) {
 
 // ProcessUpdate обрабатывает обновление из Long Polling
 func (r *Router) ProcessUpdate(update tgbotapi.Update) {
+	ctx := context.Background()
+
 	const lblProcessUpdate = "tg_bot_micserv/internal/tg_bot_router/tg_bot_router.go/ProcessUpdate()"
 	myLogger := logger.NewColorLogger(lblProcessUpdate)
 
 	// Обработка обычных сообщений
 	if update.Message != nil {
-		r.tgBotUserCase.HandleMessage(r.tgBot, update.Message.Chat.ID, update.Message.Text)
+		r.tgBotUserCase.HandleMessage(ctx, r.tgBot, update.Message.Chat.ID, update.Message.Text)
 		myLogger.Info("Успешно обработали сообщение")
 		return
 	}

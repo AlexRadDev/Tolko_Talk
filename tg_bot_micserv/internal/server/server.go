@@ -41,7 +41,7 @@ func NewServer(cfg *config.Config, handler http.Handler) *Server {
 func (s *Server) Start() error {
 	s.myLogger.Info(fmt.Sprintf("Запуск HTTP-сервера на порту: %v", s.srv.Addr))
 	if err := s.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-		s.myLogger.Error("Ошибка работы сервера", "error", err)
+		s.myLogger.Error(fmt.Sprintf("Ошибка работы сервера: %v", "error", err))
 		return err
 	}
 	return nil
@@ -51,7 +51,7 @@ func (s *Server) Start() error {
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.myLogger.Info("Инициируем graceful shutdown сервера")
 	if err := s.srv.Shutdown(ctx); err != nil {
-		s.myLogger.Error("Ошибка при завершении работы сервера", "error", err)
+		s.myLogger.Error(fmt.Sprintf("Ошибка при завершении работы сервера: %v", err))
 		return err
 	}
 	s.myLogger.Info("Сервер успешно завершил работу")

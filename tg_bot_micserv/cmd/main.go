@@ -6,10 +6,10 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"tg_bot/internal/kafka/producer"
 	"tg_bot/internal/server"
 
 	"tg_bot/internal/config"
-	"tg_bot/internal/kafka"
 	"tg_bot/internal/repo_user_requests"
 	"tg_bot/internal/tg_bot_init"
 	tg_bot_router2 "tg_bot/internal/tg_bot_router"
@@ -55,7 +55,7 @@ func main() {
 	slog.Info("Успешно создали хранилище для состояния пользователей")
 
 	// Инициализируем Kafka-продюсер
-	kafkaProducer := kafka.NewProducer(cfg.KafkaPort, cfg.NameTopicKafka) //[]string{cfg.KafkaPort}
+	kafkaProducer := producer.NewProducer(cfg.KafkaPort, cfg.NameTopicKafka) //[]string{cfg.KafkaPort}
 	slog.Info(fmt.Sprintf("Успешно создали Kafka-продюсер, Name Topic: %v", cfg.NameTopicKafka))
 
 	// Создаём слой бизнес-логики, внедряя репозиторий
