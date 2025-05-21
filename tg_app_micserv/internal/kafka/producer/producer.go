@@ -1,4 +1,4 @@
-package kafka
+package producer
 
 import (
 	"context"
@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"tg_app_micserv/internal/config"
 	"time"
 
 	"github.com/segmentio/kafka-go"
-	"tg_app_micserv/config"
 	"tg_app_micserv/tools/logger"
 )
 
@@ -30,14 +30,14 @@ func NewProducer(cfg *config.Config) (*Producer, error) {
 
 	// Создание нового экземпляра kafka.Writer для записи сообщений в Kafka
 	writer := &kafka.Writer{
-		Addr:                   kafka.TCP(strings.Split(kafkaPort, ",")...), // Установка адресов брокеров Kafka
-		Topic:                  nameTopicKafka,                              // Указание названия Kafka-топика, в который будут отправляться сообщения
-		Balancer:               &kafka.LeastBytes{},                         // Установка стратегии балансировки нагрузки: LeastBytes выбирает партицию с наименьшим количеством данных
-		MaxAttempts:            3,                                           // Максимальное количество попыток записи сообщения при неудаче
-		WriteTimeout:           1 * time.Second,                             // Таймаут для попытки записи сообщения
-		RequiredAcks:           kafka.RequireOne,                            // Требование подтверждения получения сообщения хотя бы одним брокером
-		Async:                  false,                                       // Указывает, что запись будет происходить синхронно (false — запись блокирует до завершения)
-		AllowAutoTopicCreation: true,                                        // Автоматически создавать топик, если он не существует (требует поддержки со стороны брокера)
+		Addr:                   kafka.TCP(strings.Split(kafkaPort[0], ",")...), // Установка адресов брокеров Kafka Split(kafkaPort, ",")...)
+		Topic:                  nameTopicKafka,                                 // Указание названия Kafka-топика, в который будут отправляться сообщения
+		Balancer:               &kafka.LeastBytes{},                            // Установка стратегии балансировки нагрузки: LeastBytes выбирает партицию с наименьшим количеством данных
+		MaxAttempts:            3,                                              // Максимальное количество попыток записи сообщения при неудаче
+		WriteTimeout:           1 * time.Second,                                // Таймаут для попытки записи сообщения
+		RequiredAcks:           kafka.RequireOne,                               // Требование подтверждения получения сообщения хотя бы одним брокером
+		Async:                  false,                                          // Указывает, что запись будет происходить синхронно (false — запись блокирует до завершения)
+		AllowAutoTopicCreation: true,                                           // Автоматически создавать топик, если он не существует (требует поддержки со стороны брокера)
 	}
 
 	// Возвращаем указатель на новый объект Producer с созданным writer

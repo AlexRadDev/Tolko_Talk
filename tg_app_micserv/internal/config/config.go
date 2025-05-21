@@ -18,7 +18,7 @@ type Config struct {
 	Phone          string
 	Two_F_Password string
 	Port           string
-	KafkaPort      string
+	KafkaPort      []string
 	KafkaTopic     string
 }
 
@@ -62,15 +62,24 @@ func Load() (*Config, error) {
 	}
 	myLogger.Info("Успешно прочитали PORT")
 
-	kafkaPort := os.Getenv("KAFKA_PORT")
-	if kafkaPort == "" {
-		return nil, errors.New("KAFKA_PORT не указан")
+	kafkaPort := make([]string, 0)
+	kafkaPort = append(kafkaPort, os.Getenv("KAFKA_PORT_01"))
+	if kafkaPort[0] == "" {
+		return nil, errors.New("KAFKA_PORT_01 не указан")
 	}
-	myLogger.Info("Успешно прочитали KAFKA_PORT")
+	kafkaPort = append(kafkaPort, os.Getenv("KAFKA_PORT_02"))
+	if kafkaPort[1] == "" {
+		return nil, errors.New("KAFKA_PORT_02 не указан")
+	}
+	kafkaPort = append(kafkaPort, os.Getenv("KAFKA_PORT_03"))
+	if kafkaPort[2] == "" {
+		return nil, errors.New("KAFKA_PORT_03 не указан")
+	}
+	myLogger.Info("Успешно прочитали все KAFKA_PORT")
 
-	kafkaTopic := os.Getenv("KAFKA_TOPIC")
+	kafkaTopic := os.Getenv("KAFKA_TOPIC_01")
 	if kafkaTopic == "" {
-		return nil, errors.New("KAFKA_TOPIC не указан")
+		return nil, errors.New("KAFKA_TOPIC_01 не указан")
 	}
 	myLogger.Info("Успешно прочитали KAFKA_TOPIC")
 

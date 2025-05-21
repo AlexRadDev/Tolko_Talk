@@ -5,9 +5,8 @@ package service_parser
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"strings"
-	"tg_app_micserv/internal/kafka"
+	"tg_app_micserv/internal/kafka/producer"
 	"time"
 	"unicode/utf8"
 
@@ -18,7 +17,7 @@ import (
 // ServiceParser организует получение и очистку сообщений
 type ServiceParser struct {
 	parser     interfaces.ServiceParser // Интерфейс для получения сообщений
-	producer   kafka.MessageProducer    // Интерфейс для отправки в Kafka
+	producer   producer.MessageProducer // Интерфейс для отправки в Kafka
 	formatText interfaces.TextCleaner   // Интерфейс для очистки текста
 }
 
@@ -30,18 +29,28 @@ func NewServiceParser(parser interfaces.ServiceParser) *ServiceParser {
 }
 
 // FetchMessages парсит и обрабатывает посты(текст) из канала
-func (s *ServiceParser) PostParser(ctx context.Context, nameChannel string, timePeriod time.Duration) (string, error) {
-	const lbl = "tg_app_micserv/cmd/main.go/main()"
-	logger := logger.NewColorLogger(lbl)
-	slog.SetDefault(logger)
+func (s *ServiceParser) PostParser(ctx context.Context, nameChannel string, timePeriod time.Duration) (map[int64]string, error) {
+	const lbl = "tg_app_micserv/internal/service_parser/service_parser.go/PostParser()"
+	mylogger := logger.NewColorLogger(lbl)
+
+	// Форматируем имя канала
+	channelNameForParserFunc := ""
+	if len(nameChannel) > 0 && nameChannel[0] == '@' {
+		channelNameForParserFunc = nameChannel[1:]
+	}
+	const prefix = "https://t.me/"
+	if len(nameChannel) > 0 && strings.HasPrefix(nameChannel, prefix) {
+		channelNameForParserFunc = strings.TrimPrefix(nameChannel, prefix)
+	}
+	mylogger.Info(fmt.Sprintf("Имя канала успешно извлечено: %v", channelNameForParserFunc))
 
 	// Получаем сообщения из fetcher (например, Telegram-клиента)
-	messages, err := s.parser.PostParser(ctx, nameChannel, timePeriod)
+	messages, err := s.parser.PostParser(ctx, channelNameForParserFunc, timePeriod)
 	if err != nil {
-		slog.Error(fmt.Sprintf("Ошибка из PostParser: %v", err))
-		return "", err
+		mylogger.Error(fmt.Sprintf("Ошибка из PostParser: %v", err))
+		return nil, err
 	}
-	slog.Info("Успешно спарсили посты")
+	mylogger.Info("Успешно спарсили посты")
 
 	// Создаем карту для хранения обработанных сообщений
 	messageMap := make(map[int64]string)
@@ -56,12 +65,13 @@ func (s *ServiceParser) PostParser(ctx context.Context, nameChannel string, time
 		}
 	}
 
-	// Отправляем карту в Kafka
-	if err := s.producer.ProduceMessages(ctx, messageMap); err != nil {
-		return "", fmt.Errorf("ошибка отправки в Kafka: %w", err)
-	}
+	//mylogger.Info(fmt.Sprintf("Итоговый текст из функции PostParser(): %v", messageMap))
+	//// Отправляем карту в Kafka
+	//if err := s.producer.ProduceMessages(ctx, messageMap); err != nil {
+	//	return "", fmt.Errorf("ошибка отправки в Kafka: %w", err)
+	//}
 
-	return "", nil
+	return messageMap, nil
 }
 
 //----------------------------------------------------------------------------------------------------------------------

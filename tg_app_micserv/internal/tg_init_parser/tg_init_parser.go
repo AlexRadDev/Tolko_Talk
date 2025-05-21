@@ -1,18 +1,19 @@
 // Реализация клиента Telegram
 
-package tg_parser
+package tg_init_parser
 
 import (
 	"context"
 
 	"fmt"
-	"log/slog"
 	"sync"
 	"time"
 
+	"github.com/gotd/td/session"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/tg"
+
 	"tg_app_micserv/internal/model"
 	"tg_app_micserv/tools/logger"
 )
@@ -29,6 +30,9 @@ type Client struct {
 
 // NewClient создает новый клиент Telegram
 func NewClient(tgApiID int, tgApiHash, phone, twoFacPassword string, storage telegram.SessionStorage) *Client {
+	if storage == nil {
+		storage = &session.FileStorage{Path: "session.json"} // Сохраняем сессию в session.json
+	}
 	tgAppClient := telegram.NewClient(tgApiID, tgApiHash, telegram.Options{
 		SessionStorage: storage,
 	})
@@ -43,9 +47,8 @@ func NewClient(tgApiID int, tgApiHash, phone, twoFacPassword string, storage tel
 
 // PostParser извлекает сообщения из канала Telegram (парсит заданный канал)
 func (c *Client) PostParser(ctx context.Context, tgNameChannel string, timePeriod time.Duration) ([]tg_post_model.Message, error) {
-	const lbl = "tg_app_micserv/cmd/main.go/main()"
-	logger := logger.NewColorLogger(lbl)
-	slog.SetDefault(logger)
+	const lbl = "tg_app_micserv/internal/tg_init_parser/tg_init_parser.go/PostParser()"
+	mylogger := logger.NewColorLogger(lbl)
 
 	// Создаем срез для хранения сообщений
 	var messages []tg_post_model.Message
@@ -53,24 +56,26 @@ func (c *Client) PostParser(ctx context.Context, tgNameChannel string, timePerio
 	err := c.tgAppClient.Run(ctx, func(ctx context.Context) error {
 		status, err := c.tgAppClient.Auth().Status(ctx) // Проверяем статус аутентификации текущего клиента
 		if err != nil {
-			slog.Error("не удалось проверить статус аутентификации")
+			mylogger.Error("не удалось проверить статус аутентификации")
 			return fmt.Errorf("не удалось проверить статус аутентификации: %w", err)
 		}
 
 		// Если пользователь не авторизован — запускаем процесс авторизации
+
 		if !status.Authorized {
+			mylogger.Info("Пользователь не авторизован!!!")
 			authenticator := &customCodeAuthenticator{
 				phone:          c.phone,
 				twoFacPassword: c.twoFacPassword,
 			}
 			flow := auth.NewFlow(authenticator, auth.SendCodeOptions{})
 			if err := flow.Run(ctx, c.tgAppClient.Auth()); err != nil {
-				slog.Error("Авторизация не удалась")
+				mylogger.Error("Авторизация не удалась")
 				return fmt.Errorf("authorization failed: %w", err)
 			}
-			slog.Info("Успешно авторизовано")
+			mylogger.Info("Успешно авторизовано")
 		} else {
-			slog.Info("Уже авторизован, использует существующую сессию")
+			mylogger.Info("Уже авторизован, использует существующую сессию")
 		}
 
 		// Получаем API клиента Telegram
@@ -89,7 +94,7 @@ func (c *Client) PostParser(ctx context.Context, tgNameChannel string, timePerio
 		if len(resolved.Chats) > 0 {
 			chat, ok := resolved.Chats[0].(*tg.Channel)
 			if !ok {
-				slog.Info("Ожидаемый тип канала, получен")
+				mylogger.Info("Ожидаемый тип канала, получен")
 				return fmt.Errorf("Ожидаемый тип канала, получен %T", resolved.Chats[0])
 			}
 			inputPeer = &tg.InputPeerChannel{
@@ -118,7 +123,7 @@ func (c *Client) PostParser(ctx context.Context, tgNameChannel string, timePerio
 			Limit: 100,
 		})
 		if err != nil {
-			slog.Error("Не удалось получить посты из канала")
+			mylogger.Error("Не удалось получить посты из канала")
 			return fmt.Errorf("Не удалось получить посты из канала: %w", err)
 		}
 
@@ -158,7 +163,7 @@ func (c *Client) PostParser(ctx context.Context, tgNameChannel string, timePerio
 		return nil
 	})
 	if err != nil {
-		slog.Error("Не удалось запустить Telegram App Client")
+		mylogger.Error("Не удалось запустить Telegram App Client")
 		return nil, fmt.Errorf("не удалось запустить Telegram tgAppClient: %w", err)
 	}
 
@@ -201,7 +206,11 @@ func (c *customCodeAuthenticator) Phone(_ context.Context) (string, error) {
 }
 
 func (c *customCodeAuthenticator) Code(_ context.Context, _ *tg.AuthSentCode) (string, error) {
-	return "", fmt.Errorf("Ввод кода не поддерживается в режиме микросервиса")
+	//return "", fmt.Errorf("Ввод кода не поддерживается в режиме микросервиса")
+	var code string
+	fmt.Print("Введите код подтверждения: ")
+	fmt.Scanln(&code)
+	return code, nil
 }
 
 func (c *customCodeAuthenticator) Password(_ context.Context) (string, error) {

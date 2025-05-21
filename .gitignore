@@ -16,6 +16,9 @@ go.work
 
 # Environment files
 monolith/.env
+text_to_speech_micserv/.env
+tg_app_micserv/.env
+tg_bot_micserv/.env
 
 # IDE specific files
 .idea
@@ -34,16 +37,24 @@ logs/
 monolith/tools/
 monolith/project-files.txt
 monolith/
-tg_app_micserv/tools/
-tg_bot_micserv/tools/scripts_start/
 
-start_app.sh
+
+tg_bot_micserv/tools/scripts_start/
+#text_to_speech_micserv/tools/
+#tg_app_micserv/tools/
+
+
 start_docker.sh
+start_tg_bot_micserv.sh
+start_tg_app_micserv.sh
 
 README.md
 tg_bot_micserv/readme.txt
 text_to_speech_micserv/readme.txt
-text_to_speech_micserv/semiotic-mender-459813-c9-fdcf02adec5e.json
+tg_app_micserv/readme.txt
 
+# json сессии аунтетификации
+tg_app_micserv/session.json
+text_to_speech_micserv/semiotic-mender-459813-c9-fdcf02adec5e.json
 monolith/semiotic-mender-459813-c9-fdcf02adec5e.json
 monolith/session.json
