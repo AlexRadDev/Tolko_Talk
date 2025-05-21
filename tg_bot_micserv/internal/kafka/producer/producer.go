@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net"
 	"strconv"
+	"time"
 
 	"github.com/segmentio/kafka-go"
 	"tg_bot/tools/logger"
@@ -20,10 +21,11 @@ type Producer struct {
 func NewProducer(portKafka string, nameTopicKafka string) *Producer {
 	// Создаём объект Kafka-продюсера
 	writer := &kafka.Writer{
-		Addr:     kafka.TCP(portKafka), // Указываем адреса брокеров Kafka
-		Topic:    nameTopicKafka,       // Указываем топик для отправки сообщений
-		Balancer: &kafka.LeastBytes{},  // Используем балансировку по ключу для равномерного распределения сообщений
-		Async:    true,                 // Включаем асинхронную отправку сообщений
+		Addr:       kafka.TCP(portKafka), // Указываем адреса брокеров Kafka
+		Topic:      nameTopicKafka,       // Указываем топик для отправки сообщений
+		Balancer:   &kafka.LeastBytes{},  // Используем балансировку по ключу для равномерного распределения сообщений
+		Async:      true,                 // Включаем асинхронную отправку сообщений
+		BatchBytes: 5 * 1024 * 1024,      // 5 MB
 	}
 
 	return &Producer{Writer: writer}
@@ -53,7 +55,6 @@ func (p *Producer) SendMessage(ctx context.Context, nameTopic string, data []byt
 	}
 
 	msg := kafka.Message{
-		//Topic: nameTopic, // Указываем топик
 		Value: data, // Передаём сериализованные данные
 	}
 
@@ -78,31 +79,6 @@ func (p *Producer) topicExists(ctx context.Context, topic string) (bool, error) 
 		return false, err
 	}
 	defer ctrlConn.Close()
-
-	//conn, err := kafka.Dial("tcp", p.Writer.Addr.String())
-	//if err != nil {
-	//	myLogger.Error(fmt.Sprintf("Ошибка подключения к Kafka: %v", err))
-	//	return false, fmt.Errorf("подключение к Kafka: %w", err)
-	//}
-	//defer conn.Close()
-	//
-	//// Получаем контроллера кластера
-	//controller, err := conn.Controller()
-	//if err != nil {
-	//	myLogger.Error(fmt.Sprintf("Не удалось получить контроллер: %v", err))
-	//	os.Exit(1)
-	//}
-	//
-	//controllerAddr := net.JoinHostPort(controller.Host, strconv.Itoa(controller.Port))
-	//myLogger.Info(fmt.Sprintf("Найден контроллер: %v", controllerAddr))
-	//
-	//// Подключаемся к контроллеру
-	//ctrlConn, err := kafka.Dial("tcp", controllerAddr)
-	//if err != nil {
-	//	myLogger.Error(fmt.Sprintf("Не удалось подключиться к контроллеру: %v", err))
-	//	os.Exit(1)
-	//}
-	//defer ctrlConn.Close()
 
 	// Получаем список топиков
 	partitions, err := ctrlConn.ReadPartitions()
@@ -132,37 +108,17 @@ func (p *Producer) createTopic(ctx context.Context, topic string) error {
 	}
 	defer ctrlConn.Close()
 
-	//// Подключаемся к Kafka
-	//conn, err := kafka.Dial("tcp", p.Writer.Addr.String())
-	//if err != nil {
-	//	myLogger.Error(fmt.Sprintf("Ошибка подключение к Kafka: %v", err))
-	//	return fmt.Errorf("Ошибка подключение к Kafka: %w", err)
-	//}
-	//defer conn.Close()
-	//
-	//// Получаем контроллера кластера
-	//controller, err := conn.Controller()
-	//if err != nil {
-	//	myLogger.Error(fmt.Sprintf("Не удалось получить контроллер: %v", err))
-	//	os.Exit(1)
-	//}
-	//
-	//controllerAddr := net.JoinHostPort(controller.Host, strconv.Itoa(controller.Port))
-	//myLogger.Info(fmt.Sprintf("Найден контроллер: %v", controllerAddr))
-	//
-	//// Подключаемся к контроллеру
-	//ctrlConn, err := kafka.Dial("tcp", controllerAddr)
-	//if err != nil {
-	//	myLogger.Error(fmt.Sprintf("Не удалось подключиться к контроллеру: %v", err))
-	//	os.Exit(1)
-	//}
-	//defer ctrlConn.Close()
-
 	// Конфигурация топика
 	topicConfig := kafka.TopicConfig{
 		Topic:             topic,
 		NumPartitions:     2, // Кол-во партиций
 		ReplicationFactor: 3, // Репликация на все брокеры
+		ConfigEntries: []kafka.ConfigEntry{ // Максимальный размер сообщения в топике
+			{
+				ConfigName:  "max.message.bytes",
+				ConfigValue: "10485760", // 10MB
+			},
+		},
 	}
 
 	// Создаём топик
@@ -171,6 +127,9 @@ func (p *Producer) createTopic(ctx context.Context, topic string) error {
 		myLogger.Error(fmt.Sprintf("Ошибка создания топика: %v", err))
 		return fmt.Errorf("создание топика %s: %w", topic, err)
 	}
+
+	// Ждем 3 секунды для распространения метаданных о новом топике
+	time.Sleep(3 * time.Second)
 
 	return nil
 }

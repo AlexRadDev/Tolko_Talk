@@ -47,6 +47,7 @@ tg_bot_micserv/tools/scripts_start/
 start_docker.sh
 start_tg_bot_micserv.sh
 start_tg_app_micserv.sh
+stsrt_text_to_speech_micserv.sh
 
 README.md
 tg_bot_micserv/readme.txt

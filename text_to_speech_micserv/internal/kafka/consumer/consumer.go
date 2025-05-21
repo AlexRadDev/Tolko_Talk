@@ -6,92 +6,95 @@ package consumer
 import (
 	"context"
 	"encoding/json"
-	"github.com/segmentio/kafka-go"
-	"log/slog"
-	"text_to_speech_app/internal/app_text_to_speech"
+	"fmt"
 
-	"text_to_speech_app/internal/model/model_text_to_speech"
+	"github.com/segmentio/kafka-go"
+
+	"text_to_speech_app/internal/app_text_to_speech"
+	"text_to_speech_app/internal/config"
+	"text_to_speech_app/internal/kafka/producer"
+	"text_to_speech_app/internal/model/model_kafka"
 	"text_to_speech_app/tools/logger"
 )
 
-// Consumer содержит Kafka-консьюмер
+// Consumer представляет Kafka-консьюмер.
 type Consumer struct {
-	reader *kafka.Reader // объект для чтения сообщений из Kafka
+	Reader   *kafka.Reader
+	Producer *producer.Producer
 }
 
-// NewConsumer создаёт новый Kafka-консьюмер
-func NewConsumer(brokers []string, nameTopic, groupID string) *Consumer {
+// NewConsumer создаёт новый экземпляр Kafka-консьюмера.
+func NewConsumer(cfg *config.Config, producerKafka *producer.Producer) *Consumer { // serviceParser *service_parser.ServiceParser
 
-	// Создаём объект Kafka-консьюмера
+	// Конфигурация Kafka Reader
 	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:  brokers,   // Указываем адреса брокеров Kafka
-		Topic:    nameTopic, // Указываем топик
-		GroupID:  groupID,   // Указываем идентификатор группы
-		MinBytes: 10e3,      // 10KB - Устанавливаем минимальное количество байт для чтения
-		MaxBytes: 10e6,      // 10MB - Устанавливаем максимальное количество байт для чтения
+		Brokers:     cfg.KafkaPort,     // Список брокеров
+		Topic:       cfg.TopicConsum,   // Топик для чтения
+		GroupID:     "group_01",        // ID группы консьюмеров
+		StartOffset: kafka.FirstOffset, // читать с начала
+		MinBytes:    10e3,              // Минимальный размер батча (10KB)
+		MaxBytes:    10e6,              // Максимальный размер батча (10MB)
 	})
 
-	return &Consumer{reader: reader}
+	return &Consumer{
+		Reader:   reader,
+		Producer: producerKafka,
+	}
 }
 
-// Consume читает сообщения из Kafka и обрабатывает их
-func (c *Consumer) Consume(ctx context.Context, ttsService *app_text_to_speech.Service) error {
-	const lblConsumer = "internal/infrastructure/kafka/consumer.go"
-	myLogger := logger.NewColorLogger(lblConsumer)
+// Consume читает сообщения из Kafka и передаёт их в service_parser.PostParser.
+func (c *Consumer) Consume(ctx context.Context, cfg *config.Config, appTextToTpeech *app_text_to_speech.Service) error { //sessionStorage *tg_session_storage.FileSessionStorage
+	const lblConsume = "text_to_speech_micserv/internal/kafka/consumer/consumer.go/Consume()"
+	myLogger := logger.NewColorLogger(lblConsume)
+	myLogger.Info("Подписались на топик Kafaka: \"tgapp-texttospeech\"")
 
-	// Бесконечный цикл для чтения сообщений
 	for {
 		// Читаем сообщение из Kafka
-		msg, err := c.reader.ReadMessage(ctx)
+		msg, err := c.Reader.ReadMessage(ctx)
 		if err != nil {
-			myLogger.Error("Ошибка чтения сообщения из Kafka", slog.Any("error", err))
-			return err
+			myLogger.Error(fmt.Sprintf("Ошибка чтения сообщения из Kafka: %v", err))
+			return fmt.Errorf("чтение сообщения: %w", err)
 		}
-		myLogger.Info("Получено сообщение из Kafka", slog.String("topic", msg.Topic))
+		myLogger.Info(fmt.Sprintf("Получено сообщение из топика %s: %s", msg.Topic, string(msg.Value)))
 
-		// Создаём структуру для запроса
-		var req model_text_to_speech.TextToSpeechRequest
-		if err := json.Unmarshal(msg.Value, &req); err != nil {
-			myLogger.Error("Ошибка десериализации сообщения", slog.Any("error", err))
-			continue
+		var messageFromTGAPP *model_kafka.KafkaMessageFromTGAPP // Структура для Unmarshal сообщения от ТГ-бота из Kafka
+
+		if err := json.Unmarshal(msg.Value, &messageFromTGAPP); err != nil {
+			myLogger.Error(fmt.Sprintf("Ошибка десериализации сообщения: %v", err))
+			continue // Пропускаем некорректное сообщение
 		}
-		myLogger.Info("Успешно десериализовали сообщение", slog.Any("request", req))
 
-		// Вызываем бизнес-логику для синтеза речи
-		resp, err := ttsService.Synthesize(ctx, &req)
-		if err != nil {
-			myLogger.Error("Ошибка синтеза речи", slog.Any("error", err))
-			continue
-		}
-		myLogger.Info("Успешно обработали запрос")
-
-		// Сериализуем ответ
-		respData, err := json.Marshal(resp)
-		if err != nil {
-			myLogger.Error("Ошибка сериализации ответа", slog.Any("error", err))
+		// Передаём данные в TextToTpeech Synthesize для синтэза аудио
+		responseForTGAPP, err1 := appTextToTpeech.Synthesize(ctx, messageFromTGAPP)
+		if err1 != nil {
+			myLogger.Error(fmt.Sprintf("Ошибка обработки сообщения в PostParser: %v", err1))
 			continue
 		}
 
-		// Отправляем ответ через продюсер
-		if err := ttsService.KafkaProducer.SendMessage("text-to-speech-responses", respData); err != nil {
-			myLogger.Error("Ошибка отправки ответа в Kafka", slog.Any("error", err))
-			continue
+		jsonData, err02 := json.Marshal(responseForTGAPP)
+		if err02 != nil {
+			myLogger.Error(fmt.Sprintf("Ошибка сериализации JSON: %v", err02))
 		}
-		myLogger.Info("Успешно отправили ответ в Kafka")
+
+		err03 := c.Producer.SendMessage(ctx, cfg.TopicProdus, jsonData)
+		if err03 != nil {
+			myLogger.Error(fmt.Sprintf("Не удалось отправить сообщение в Kafka(tgapp-texttospeech): %v", err03))
+		}
+		myLogger.Info("Сообщение в Kafka(texttospeech-tgapp) успешно отправлено")
 	}
+
+	return nil
 }
 
-// Close закрывает соединение с Kafka
+// Close закрывает Kafka Reader.
 func (c *Consumer) Close() error {
-	const lblClose = "internal/infrastructure/kafka/consumer.go"
-	myLogger := logger.NewColorLogger(lblClose)
+	const lblClose = "text_to_speech_micserv/internal/kafka/consumer/consumer.go/Close()"
+	mylogger := logger.NewColorLogger(lblClose)
 
-	// Закрываем reader
-	err := c.reader.Close()
-	if err != nil {
-		myLogger.Error("Ошибка закрытия Kafka-консьюмера", slog.Any("error", err))
-		return err
+	if err := c.Reader.Close(); err != nil {
+		mylogger.Error(fmt.Sprintf("Ошибка закрытия Kafka Reader: %v", err))
+		return fmt.Errorf("закрытие Reader: %w", err)
 	}
-	myLogger.Info("Kafka-консьюмер успешно закрыт")
+	mylogger.Info("Kafka Consumer успешно закрыт")
 	return nil
 }

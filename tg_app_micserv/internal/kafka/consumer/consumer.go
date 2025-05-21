@@ -9,6 +9,8 @@ import (
 	"github.com/segmentio/kafka-go"
 
 	"tg_app_micserv/internal/config"
+	"tg_app_micserv/internal/kafka/producer"
+	"tg_app_micserv/internal/model/model_kafka"
 	"tg_app_micserv/internal/service_parser"
 	"tg_app_micserv/internal/tg_init_parser"
 	"tg_app_micserv/internal/tg_session_storage"
@@ -20,15 +22,6 @@ type Consumer struct {
 	Reader *kafka.Reader
 }
 
-// KafkaRequest представляет структуру данных сообщения из Kafka.
-type KafkaRequest struct {
-	ChatID               int64   `json:"ChatID"`               // идентификатор чата Telegram
-	NameChanel           string  `json:"NameChanel"`           // имя или ссылка на Telegram-канал
-	SpeakingRate         float64 `json:"SpeakingRate"`         // скорость речи
-	TimePeriod           int     `json:"TimePeriod"`           // период времени в часах
-	AwaitingChannelInput bool    `json:"AwaitingChannelInput"` // флаг, указывающий, ожидается ли ввод имени канала
-}
-
 // NewConsumer создаёт новый экземпляр Kafka-консьюмера.
 func NewConsumer(cfg *config.Config) *Consumer { // serviceParser *service_parser.ServiceParser
 	const lblNewConsumer = "tg_app_micserv/internal/kafka/consumer/consumer.go/NewConsumer()"
@@ -36,26 +29,25 @@ func NewConsumer(cfg *config.Config) *Consumer { // serviceParser *service_parse
 
 	// Конфигурация Kafka Reader
 	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:     cfg.KafkaPort,          // Список брокеров
-		Topic:       cfg.KafkaTopic,         // Топик для чтения
-		GroupID:     "tg_app_parser_group4", // ID группы консьюмеров
-		StartOffset: kafka.FirstOffset,      // читать с начала
-		MinBytes:    10e3,                   // Минимальный размер батча (10KB)
-		MaxBytes:    10e6,                   // Максимальный размер батча (10MB)
+		Brokers:     cfg.KafkaPort,     // Список брокеров
+		Topic:       cfg.KafkaTopic_01, // Топик для чтения
+		GroupID:     "group_01",        // ID группы консьюмеров
+		StartOffset: kafka.FirstOffset, // читать с начала
+		MinBytes:    10e3,              // Минимальный размер батча (10KB)
+		MaxBytes:    10e6,              // Максимальный размер батча (10MB)
 	})
 
-	mylogger.Info(fmt.Sprintf("Kafka Consumer создан для топика %s с брокерами %v", cfg.KafkaTopic, cfg.KafkaPort))
+	mylogger.Info(fmt.Sprintf("Kafka Consumer создан для топика %s с брокерами %v", cfg.KafkaTopic_01, cfg.KafkaPort))
 	return &Consumer{
 		Reader: reader,
-		//ServiceParser: serviceParser,
 	}
 }
 
 // Consume читает сообщения из Kafka и передаёт их в service_parser.PostParser.
-func (c *Consumer) Consume(ctx context.Context, cfg *config.Config, sessionStorage *tg_session_storage.FileSessionStorage) error {
+func (c *Consumer) Consume(ctx context.Context, cfg *config.Config, sessionStorage *tg_session_storage.FileSessionStorage, producer *producer.Producer) error {
 	const lblConsume = "tg_app_micserv/internal/kafka/consumer/consumer.go/Consume()"
-	mylogger := logger.NewColorLogger(lblConsume)
-	mylogger.Info("Подписались на топик Kafaka: \"tgbot-tgapp\"")
+	myLogger := logger.NewColorLogger(lblConsume)
+	myLogger.Info("Подписались на топик Kafaka: \"tgbot-tgapp\"")
 
 	for {
 		// Создаем новый клиент для каждой итерации
@@ -65,32 +57,51 @@ func (c *Consumer) Consume(ctx context.Context, cfg *config.Config, sessionStora
 		// Читаем сообщение из Kafka
 		msg, err := c.Reader.ReadMessage(ctx)
 		if err != nil {
-			mylogger.Error(fmt.Sprintf("Ошибка чтения сообщения из Kafka: %v", err))
+			myLogger.Error(fmt.Sprintf("Ошибка чтения сообщения из Kafka: %v", err))
 			return fmt.Errorf("чтение сообщения: %w", err)
 		}
-		mylogger.Info(fmt.Sprintf("Получено сообщение из топика %s: %s", msg.Topic, string(msg.Value)))
+		myLogger.Info(fmt.Sprintf("Получено сообщение из топика %s: %s", msg.Topic, string(msg.Value)))
 
-		var request KafkaRequest
-		if err := json.Unmarshal(msg.Value, &request); err != nil {
-			mylogger.Error(fmt.Sprintf("Ошибка десериализации сообщения: %v", err))
+		var messageFromTGB *model_kafka.KafkaMessageFromTGB // Структура для Unmarshal сообщения от ТГ-бота из Kafka
+		if err := json.Unmarshal(msg.Value, &messageFromTGB); err != nil {
+			myLogger.Error(fmt.Sprintf("Ошибка десериализации сообщения: %v", err))
 			continue // Пропускаем некорректное сообщение
 		}
 
-		timePeriod := time.Duration(request.TimePeriod) * time.Hour
+		timePeriod := time.Duration(messageFromTGB.TimePeriod) * time.Hour
 
 		// Передаём данные в service_parser.PostParser
-		textForAudio, err1 := serviceParser.PostParser(ctx, request.NameChanel, timePeriod)
+		textForAudio, err1 := serviceParser.PostParser(ctx, messageFromTGB.NameChanel, timePeriod)
 		if err1 != nil {
-			mylogger.Error(fmt.Sprintf("Ошибка обработки сообщения в PostParser: %v", err1))
+			myLogger.Error(fmt.Sprintf("Ошибка обработки сообщения в PostParser: %v", err1))
 			// Продолжаем чтение, чтобы не останавливать консьюмер
 			continue
 		}
+		//myLogger.Info(fmt.Sprintf("Мапа textForAudio: %v", textForAudio))
 
-		mylogger.Info(fmt.Sprintf("!!! Сообщение успешно обработано PostParser, МАПА ТЕКСТ ДЛЯ АУДИО → textForAudio = %v", textForAudio))
+		// Проверяем спарсили ли мы текст
+		if len(textForAudio) == 0 {
+			// Новостей за этот период нет
+			// TODO: Реализовать отправку обратно в TG сообщение что постов за этот период нет
+		} else {
+			// отправляем мапу с текстом дольше в kafka в tgapp-texttospeech
+			request := model_kafka.InitKafkaRequestForTTS(messageFromTGB, textForAudio)
 
-		mylogger.Info("Завершение Telegram-клиента")
-		if err := tgClient.Close(ctx); err != nil {
-			mylogger.Error("Ошибка при закрытии Telegram-клиента", "error", err)
+			jsonData, err01 := json.Marshal(request)
+			if err01 != nil {
+				myLogger.Error(fmt.Sprintf("Ошибка сериализации JSON: %v", err01))
+			}
+
+			err01 = producer.SendMessage(ctx, cfg.KafkaTopic_02, jsonData)
+			if err01 != nil {
+				myLogger.Error(fmt.Sprintf("Не удалось отправить сообщение в Kafka(tgapp-texttospeech): %v", err01))
+			}
+		}
+		myLogger.Info("Сообщение в Kafka(tgapp-texttospeech) успешно отправлено")
+
+		myLogger.Info("Завершение Telegram-клиента")
+		if err02 := tgClient.Close(ctx); err != nil {
+			myLogger.Error("Ошибка при закрытии Telegram-клиента", "error", err02)
 		}
 	}
 }

@@ -62,11 +62,11 @@ func main() {
 	//slog.Info("Успешно создали объект обработчика HTTP-запросов")
 
 	// Создание kafka Producer-а
-	kafkaProducer, err := producer.NewProducer(cfg)
-	if err != nil {
-		slog.Error("Не удалось создать Kafka-продюсер", "error", err)
-		log.Fatal(err)
-	}
+	kafkaProducer := producer.NewProducer(cfg)
+	//if err != nil {
+	//	slog.Error("Не удалось создать Kafka-продюсер", "error", err)
+	//	log.Fatal(err)
+	//}
 	defer func() {
 		if err := kafkaProducer.Close(); err != nil {
 			slog.Error("Ошибка при закрытии Kafka-Producer", "error", err)
@@ -85,7 +85,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	// Запуск консьюмера
 	go func() {
-		if err := kafkaConsumer.Consume(ctx, cfg, sessionStorage); err != nil {
+		if err := kafkaConsumer.Consume(ctx, cfg, sessionStorage, kafkaProducer); err != nil {
 			log.Fatalf("Ошибка в работе консьюмера: %v", err)
 		}
 	}()

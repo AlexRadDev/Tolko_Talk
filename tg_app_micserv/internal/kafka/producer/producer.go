@@ -2,14 +2,15 @@ package producer
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log/slog"
-	"strings"
-	"tg_app_micserv/internal/config"
+	"net"
+	"strconv"
 	"time"
 
 	"github.com/segmentio/kafka-go"
+
+	"tg_app_micserv/internal/config"
 	"tg_app_micserv/tools/logger"
 )
 
@@ -18,80 +19,171 @@ type MessageProducer interface {
 	ProduceMessages(ctx context.Context, messages map[int64]string) error
 }
 
-// Producer реализует отправку сообщений в Kafka
+// Структура Producer содержит Kafka-продюсер
 type Producer struct {
-	writer *kafka.Writer
+	Writer *kafka.Writer // Объект для записи сообщений в Kafka
 }
 
-// NewProducer создает новый Kafka Producer
-func NewProducer(cfg *config.Config) (*Producer, error) {
-	kafkaPort := cfg.KafkaPort
-	nameTopicKafka := cfg.KafkaTopic
-
-	// Создание нового экземпляра kafka.Writer для записи сообщений в Kafka
+// NewProducer создаёт новый Kafka-продюсер
+func NewProducer(cfg *config.Config) *Producer { // (portKafka string, nameTopicKafka string)
 	writer := &kafka.Writer{
-		Addr:                   kafka.TCP(strings.Split(kafkaPort[0], ",")...), // Установка адресов брокеров Kafka Split(kafkaPort, ",")...)
-		Topic:                  nameTopicKafka,                                 // Указание названия Kafka-топика, в который будут отправляться сообщения
-		Balancer:               &kafka.LeastBytes{},                            // Установка стратегии балансировки нагрузки: LeastBytes выбирает партицию с наименьшим количеством данных
-		MaxAttempts:            3,                                              // Максимальное количество попыток записи сообщения при неудаче
-		WriteTimeout:           1 * time.Second,                                // Таймаут для попытки записи сообщения
-		RequiredAcks:           kafka.RequireOne,                               // Требование подтверждения получения сообщения хотя бы одним брокером
-		Async:                  false,                                          // Указывает, что запись будет происходить синхронно (false — запись блокирует до завершения)
-		AllowAutoTopicCreation: true,                                           // Автоматически создавать топик, если он не существует (требует поддержки со стороны брокера)
+		Addr:       kafka.TCP(cfg.KafkaPort[0]), // Указываем адреса брокеров Kafka
+		Topic:      cfg.KafkaTopic_02,           // Указываем топик для отправки сообщений
+		Balancer:   &kafka.LeastBytes{},         // Используем балансировку по ключу для равномерного распределения сообщений
+		Async:      true,                        // Включаем асинхронную отправку сообщений
+		BatchBytes: 5 * 1024 * 1024,             // 5 MB
 	}
 
-	// Возвращаем указатель на новый объект Producer с созданным writer
-	return &Producer{
-		writer: writer,
-	}, nil
+	return &Producer{Writer: writer}
 }
 
-// ProduceMessages отправляет карту сообщений в Kafka
-func (p *Producer) ProduceMessages(ctx context.Context, mapTextForAudio map[int64]string) error {
-	const lbl = "tg_app_micserv/internal/kafka/producer.go/ProduceMessages()"
-	logger := logger.NewColorLogger(lbl)
-	slog.SetDefault(logger)
+// SendMessage отправляет сообщение в Kafka
+func (p *Producer) SendMessage(ctx context.Context, nameTopic string, data []byte) error {
+	const lblSendMessage = "internal/kafka/producer/producer.go/SendMessage()"
+	myLogger := logger.NewColorLogger(lblSendMessage)
 
-	var kafkaMessages []kafka.Message
-	// Преобразуем карту в сообщения Kafka
-	for timestamp, text := range mapTextForAudio {
-		value, err := json.Marshal(map[string]interface{}{
-			"timestamp": timestamp,
-			"text":      text,
-		})
-		if err != nil {
-			slog.Error(fmt.Sprintf("Ошибка при сериализации сообщения, error: %v, timestamp: %v", err, timestamp))
-			continue
-		}
-
-		kafkaMessages = append(kafkaMessages, kafka.Message{
-			Key:   []byte(fmt.Sprintf("%d", timestamp)),
-			Value: value,
-		})
-	}
-	slog.Info("Карта постов для Kafka заполнена")
-
-	if len(kafkaMessages) == 0 {
-		slog.Error("Карта постов для Kafka пуста")
-		return nil
-	}
-
-	// Отправляем сообщения в Kafka
-	err := p.writer.WriteMessages(ctx, kafkaMessages...)
+	// Проверка существования топика
+	exists, err := p.topicExists(ctx, nameTopic)
 	if err != nil {
-		return fmt.Errorf("ошибка при записи сообщений в Kafka: %w", err)
+		myLogger.Error(fmt.Sprintf("Ошибка при проверке существования топика %s: %v", nameTopic, err))
+		return fmt.Errorf("проверка существования топика: %w", err)
 	}
 
-	//p.logger.Info("Сообщения успешно отправлены в Kafka", "count", len(kafkaMessages))
+	// Если топик не существует, создаём его
+	if !exists {
+		myLogger.Info(fmt.Sprintf("Топик %s не существует, создаём новый", nameTopic))
+		err = p.createTopic(ctx, nameTopic)
+		if err != nil {
+			myLogger.Error(fmt.Sprintf("Ошибка при создании топика %s: %v", nameTopic, err))
+			return fmt.Errorf("создание топика: %w", err)
+		}
+		myLogger.Info(fmt.Sprintf("Топик %s успешно создан", nameTopic))
+	}
+
+	msg := kafka.Message{
+		Value: data, // Передаём сериализованные данные
+	}
+
+	// Отправляем сообщение в Kafka
+	err = p.Writer.WriteMessages(context.Background(), msg)
+	if err != nil {
+		myLogger.Error(fmt.Sprintf("Ошибка отправки сообщения в Kafka: %v, Name Topic: %v", err, nameTopic))
+		return err
+	}
+
 	return nil
 }
 
-// Close закрывает Kafka-продюсер
-func (p *Producer) Close() error {
-	if err := p.writer.Close(); err != nil {
-		//p.logger.Error("Ошибка при закрытии Kafka-продюсера", "error", err)
-		return fmt.Errorf("ошибка при закрытии Kafka-продюсера: %w", err)
+// topicExists проверяет, существует ли топик в кластере Kafka.
+func (p *Producer) topicExists(ctx context.Context, topic string) (bool, error) {
+	const lbltopicExists = "internal/kafka/producer/producer.go/topicExists()"
+	myLogger := logger.NewColorLogger(lbltopicExists)
+
+	// Получаем соединение с контроллером
+	ctrlConn, err := p.getControllerConn(ctx)
+	if err != nil {
+		return false, err
 	}
-	//p.logger.Info("Kafka-продюсер успешно закрыт")
+	defer ctrlConn.Close()
+
+	// Получаем список топиков
+	partitions, err := ctrlConn.ReadPartitions()
+	if err != nil {
+		myLogger.Error(fmt.Sprintf("Ошибка чтения партиций: %v", err))
+		return false, fmt.Errorf("чтение партиций: %w", err)
+	}
+
+	// Проверяем, есть ли топик в списке
+	for _, p := range partitions {
+		if p.Topic == topic {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
+// createTopic создаёт новый топик с заданной конфигурацией.
+func (p *Producer) createTopic(ctx context.Context, topic string) error {
+	const lblcreateTopic = "internal/kafka/producer/producer.go/topicExists()"
+	myLogger := logger.NewColorLogger(lblcreateTopic)
+
+	// Получаем соединение с контроллером
+	ctrlConn, err := p.getControllerConn(ctx)
+	if err != nil {
+		return err
+	}
+	defer ctrlConn.Close()
+
+	// Конфигурация топика
+	topicConfig := kafka.TopicConfig{
+		Topic:             topic,
+		NumPartitions:     2, // Кол-во партиций
+		ReplicationFactor: 3, // Репликация на все брокеры
+		ConfigEntries: []kafka.ConfigEntry{ // Максимальный размер сообщения в топике
+			{
+				ConfigName:  "max.message.bytes",
+				ConfigValue: "10485760", // 10MB
+			},
+		},
+	}
+
+	// Создаём топик
+	err = ctrlConn.CreateTopics(topicConfig)
+	if err != nil {
+		myLogger.Error(fmt.Sprintf("Ошибка создания топика: %v", err))
+		return fmt.Errorf("создание топика %s: %w", topic, err)
+	}
+
+	// Ждем 3 секунды для распространения метаданных о новом топике
+	time.Sleep(3 * time.Second)
+
+	return nil
+}
+
+// getControllerConn устанавливает соединение с контроллером Kafka
+func (p *Producer) getControllerConn(ctx context.Context) (*kafka.Conn, error) {
+	const lbl = "internal/kafka/producer/producer.go/getControllerConn()"
+	myLogger := logger.NewColorLogger(lbl)
+
+	// Подключаемся к Kafka
+	conn, err := kafka.DialContext(ctx, "tcp", p.Writer.Addr.String())
+	if err != nil {
+		myLogger.Error(fmt.Sprintf("Ошибка подключения к Kafka: %v", err))
+		return nil, fmt.Errorf("подключение к Kafka: %w", err)
+	}
+
+	// Получаем контроллера кластера
+	controller, err := conn.Controller()
+	if err != nil {
+		conn.Close() // Закрываем соединение при ошибке
+		myLogger.Error(fmt.Sprintf("Не удалось получить контроллер: %v", err))
+		return nil, fmt.Errorf("получение контроллера: %w", err)
+	}
+
+	controllerAddr := net.JoinHostPort(controller.Host, strconv.Itoa(controller.Port))
+	myLogger.Info(fmt.Sprintf("Найден контроллер: %v", controllerAddr))
+
+	// Подключаемся к контроллеру
+	ctrlConn, err := kafka.DialContext(ctx, "tcp", controllerAddr)
+	if err != nil {
+		conn.Close() // Закрываем первое соединение при ошибке
+		myLogger.Error(fmt.Sprintf("Не удалось подключиться к контроллеру: %v", err))
+		return nil, fmt.Errorf("подключение к контроллеру: %w", err)
+	}
+
+	// Закрываем первое соединение, так как оно больше не нужно
+	conn.Close()
+
+	return ctrlConn, nil
+}
+
+// Close закрывает соединение с Kafka
+func (p *Producer) Close() error {
+	err := p.Writer.Close()
+	if err != nil {
+		slog.Error("Ошибка закрытия Kafka-продюсера", "error", err)
+		return err
+	}
+	slog.Info("Kafka-продюсер успешно закрыт")
 	return nil
 }

@@ -7,37 +7,34 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"log/slog"
 	"sort"
 
 	"github.com/hajimehoshi/go-mp3"
 	"google.golang.org/api/option"
 	texttospeech "google.golang.org/api/texttospeech/v1"
-	"text_to_speech_app/internal/kafka/producer"
-
-	"text_to_speech_app/internal/model/model_text_to_speech"
+	"text_to_speech_app/internal/config"
+	"text_to_speech_app/internal/model/model_kafka"
 	"text_to_speech_app/tools/logger"
 )
 
 // Service представляет сервис Text-to-Speech
 type Service struct {
-	credentialsFile string             // Путь к файлу учетных данных Google Cloud
-	KafkaProducer   *producer.Producer // Указатель на Kafka-продюсер для отправки результатов
+	credentialsFile string // Путь к файлу учетных данных Google Cloud
 }
 
 // NewService создаёт новый экземпляр сервиса Text-to-Speech
-func NewService(credentialsFile string, kafkaProducer *producer.Producer) *Service {
+func NewService(cfg *config.Config) *Service {
 	return &Service{
-		credentialsFile: credentialsFile,
-		KafkaProducer:   kafkaProducer,
+		credentialsFile: cfg.GoogleCredentialsFile,
 	}
 }
 
 // Synthesize выполняет синтез речи на основе запроса
-func (s *Service) Synthesize(ctx context.Context, req *model_text_to_speech.TextToSpeechRequest) (*model_text_to_speech.TextToSpeechResponse, error) {
+func (s *Service) Synthesize(ctx context.Context, messageFromTGAPP *model_kafka.KafkaMessageFromTGAPP) (*model_kafka.KafkaRequestForTGAPP, error) {
 	const lblSynthesize = "text_to_speech_micserv/internal/app_text_to_speech/app_text_to_speech.go → Synthesize()"
 	myLogger := logger.NewColorLogger(lblSynthesize)
 
@@ -47,16 +44,16 @@ func (s *Service) Synthesize(ctx context.Context, req *model_text_to_speech.Text
 	client, err := texttospeech.NewService(ctx, option.WithCredentialsFile(s.credentialsFile))
 	if err != nil {
 		myLogger.Error("Не удалось создать клиент Text-to-Speech", slog.Any("error", err))
-		return &model_text_to_speech.TextToSpeechResponse{Error: fmt.Sprintf("Не удалось создать клиент: %v", err)}, nil
+		return nil, err
 	}
 	myLogger.Info("Создали клиента Text-to-Speech")
 
 	// Создаём мапу для хранения аудиоданных по идентификатору
 	audioDataMap := make(map[int64][]byte)
 	// Создаём срез для хранения ключей мапы
-	keys := make([]int64, 0, len(req.Text))
+	keys := make([]int64, 0, len(messageFromTGAPP.TextForAudio))
 	// Заполняем срез ключами
-	for k := range req.Text {
+	for k := range messageFromTGAPP.TextForAudio {
 		keys = append(keys, k)
 	}
 	// Сортируем ключи по возрастанию
@@ -66,7 +63,7 @@ func (s *Service) Synthesize(ctx context.Context, req *model_text_to_speech.Text
 
 	// Итерируем по отсортированным ключам
 	for _, id := range keys {
-		text := req.Text[id] // Получаем текст для текущего идентификатора
+		text := messageFromTGAPP.TextForAudio[id] // Получаем текст для текущего идентификатора
 		myLogger.Info("Синтез речи для текста", slog.Int64("id", id), slog.String("text", text))
 		input := &texttospeech.SynthesisInput{ // Определяем входной текст
 			Text: text,
@@ -79,8 +76,8 @@ func (s *Service) Synthesize(ctx context.Context, req *model_text_to_speech.Text
 		}
 		// Настраиваем параметры аудио
 		audioConfig := &texttospeech.AudioConfig{
-			AudioEncoding: "MP3",            // Формат аудио
-			SpeakingRate:  req.SpeakingRate, // Скорость речи
+			AudioEncoding: "MP3",                         // Формат аудио
+			SpeakingRate:  messageFromTGAPP.SpeakingRate, // Скорость речи
 		}
 		// Создаём запрос для синтеза речи
 		ttsReq := &texttospeech.SynthesizeSpeechRequest{
@@ -93,7 +90,7 @@ func (s *Service) Synthesize(ctx context.Context, req *model_text_to_speech.Text
 		resp, err := client.Text.Synthesize(ttsReq).Do()
 		if err != nil {
 			myLogger.Error("Не удалось синтезировать речь", slog.Int64("id", id), slog.Any("error", err))
-			return &model_text_to_speech.TextToSpeechResponse{Error: fmt.Sprintf("Не удалось синтезировать речь для id %d: %v", id, err)}, nil
+			return nil, err
 		}
 		myLogger.Info("Успешно синтэзировали речь", slog.Int64("id", id))
 
@@ -101,7 +98,7 @@ func (s *Service) Synthesize(ctx context.Context, req *model_text_to_speech.Text
 		audioData, err := base64.StdEncoding.DecodeString(resp.AudioContent)
 		if err != nil {
 			myLogger.Error("Не удалось декодировать аудио base64", slog.Int64("id", id), slog.Any("error", err))
-			return &model_text_to_speech.TextToSpeechResponse{Error: fmt.Sprintf("Не удалось декодировать аудио для id %d: %v", id, err)}, nil
+			return nil, err
 		}
 		myLogger.Info("Успешно декодировали аудио base64 в []byte", slog.Int64("id", id))
 
@@ -118,39 +115,32 @@ func (s *Service) Synthesize(ctx context.Context, req *model_text_to_speech.Text
 		_, err := mp3.NewDecoder(bytes.NewReader(audioData))
 		if err != nil {
 			myLogger.Error("Не удалось создать MP3 декодер", slog.Int64("id", id), slog.Any("error", err))
-			return &model_text_to_speech.TextToSpeechResponse{Error: fmt.Sprintf("Некорректный MP3 для id %d: %v", id, err)}, nil
+			return nil, err
 		}
 
 		// Копируем аудиоданные в буфер
 		_, err = io.Copy(&combinedAudio, bytes.NewReader(audioData))
 		if err != nil {
 			myLogger.Error("Ошибка объединения аудио", slog.Int64("id", id), slog.Any("error", err))
-			return &model_text_to_speech.TextToSpeechResponse{Error: fmt.Sprintf("Ошибка объединения аудио для id %d: %v", id, err)}, nil
+			return nil, err
 		}
 		myLogger.Info("Аудио добавлено в объединённый буфер", slog.Int64("id", id))
 	}
 	myLogger.Info("Успешно объединили все аудиофайлы")
 
-	// Создаём ответ с объединёнными аудиоданными
-	response := &model_text_to_speech.TextToSpeechResponse{
-		AudioData: combinedAudio.Bytes(),
-	}
+	var RequestForTGAPP *model_kafka.KafkaRequestForTGAPP
 
-	// Сериализуем ответ для отправки в Kafka
-	respData, err := json.Marshal(response)
+	audioDataRequest := combinedAudio.Bytes()
+
+	//region Сохранение аудиодорожки в файл
+	err = ioutil.WriteFile("audio.mp3", audioDataRequest, 0644)
 	if err != nil {
-		myLogger.Error("Ошибка сериализации ответа для Kafka", slog.Any("error", err))
-		return &model_text_to_speech.TextToSpeechResponse{Error: fmt.Sprintf("Ошибка сериализации ответа: %v", err)}, nil
+		myLogger.Error(fmt.Sprintf("Не удалось сохранить аудио", err))
 	}
-	myLogger.Info("Успешно сериализовали ответ для Kafka")
+	myLogger.Info("Аудио файл сохранен!")
+	//endregion
 
-	// Отправляем результат в Kafka
-	err = s.KafkaProducer.SendMessage("text-to-speech-responses", respData)
-	if err != nil {
-		myLogger.Error("Ошибка отправки в Kafka", slog.Any("error", err))
-		return &model_text_to_speech.TextToSpeechResponse{Error: fmt.Sprintf("Ошибка отправки в Kafka: %v", err)}, nil
-	}
-	myLogger.Info("Успешно отправили результат в Kafka", slog.String("topic", "text-to-speech-responses"))
+	RequestForTGAPP = model_kafka.InitKafkaRequestForTTS(messageFromTGAPP.ChatID, audioDataRequest)
 
-	return response, nil
+	return RequestForTGAPP, nil
 }
