@@ -4,7 +4,6 @@ package main
 
 import (
 	"context"
-	"github.com/joho/godotenv"
 	"log"
 	"log/slog"
 	"os"
@@ -19,22 +18,23 @@ import (
 )
 
 const (
-	pathEnv = ".env"
-	lbl     = "tg_app_micserv/cmd/main.go/main()"
+	pathEnv         = ".env"
+	lbl             = "tg_app_micserv/cmd/main.go/main()"
+	pathSessionJson = "/app/session.json" // session.json
 )
 
 func main() {
 	// Инициализация логера
-	logger := logger.NewColorLogger(lbl)
-	slog.SetDefault(logger)
+	mylogger := logger.NewColorLogger(lbl)
+	slog.SetDefault(mylogger)
 	slog.Info("Запустили обертку logger")
 
-	err := godotenv.Load(pathEnv)
-	if err != nil {
-		slog.Error("Неудалось найти файл .env", "error", err)
-		log.Fatal(err)
-	}
-	slog.Info("Подгрузили файл .env")
+	//err := godotenv.Load(pathEnv)
+	//if err != nil {
+	//	slog.Error("Неудалось найти файл .env", "error", err)
+	//	log.Fatal(err)
+	//}
+	//slog.Info("Подгрузили файл .env")
 
 	// Загрузка конфигов
 	cfg, err := config.Load()
@@ -46,7 +46,7 @@ func main() {
 
 	// Инициализация зависимостей
 	// Инициализация хранилища сессии Telegram-клиента (локальный файл session.json)
-	sessionStorage := tg_session_storage.NewFileSessionStorage("session.json")
+	sessionStorage := tg_session_storage.NewFileSessionStorage(pathSessionJson)
 	slog.Info("Успешно создали объект хранилища сессии")
 
 	// Создание нового Telegram клиента с передачей API ID, Hash, телефона и 2FA пароля
@@ -85,7 +85,7 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	// Запуск консьюмера
 	go func() {
-		if err := kafkaConsumer.Consume(ctx, cfg, sessionStorage, kafkaProducer); err != nil {
+		if err := kafkaConsumer.Consume(ctx, cfg, sessionStorage, kafkaProducer, pathSessionJson); err != nil {
 			log.Fatalf("Ошибка в работе консьюмера: %v", err)
 		}
 	}()

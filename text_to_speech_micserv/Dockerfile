@@ -1,20 +1,29 @@
-# Используем официальный образ Go версии 1.23.6 как базовый
-FROM golang:1.23.6
+# Используем официальный образ Go 1.23.6 для сборки
+FROM golang:1.23.6 AS builder
 
-# Устанавливаем рабочую директорию внутри контейнера
+# Устанавливаем рабочую директорию
 WORKDIR /app
 
-# Копируем go.mod и go.sum для установки зависимостей
+# Копируем go.mod и go.sum для загрузки зависимостей
 COPY go.mod go.sum ./
-
-# Устанавливаем зависимости
 RUN go mod download
 
-# Копируем весь исходный код проекта
+# Копируем весь исходный код
 COPY . .
 
-# Компилируем приложение
-RUN go build -o /text-to-speech-microservice ./cmd
+# Собираем исполняемый файл
+RUN go build -o main ./cmd/main.go
 
-# Указываем команду для запуска приложения
-CMD ["/text-to-speech-microservice"]
+# Создаём финальный минимальный образ
+FROM golang:1.23.6
+
+WORKDIR /app
+
+# Копируем собранный бинарный файл из стадии builder
+COPY --from=builder /app/main .
+
+# Копируем session.json в рабочую директорию контейнера
+COPY semiotic-mender-459813-c9-fdcf02adec5e.json ./semiotic-mender-459813-c9-fdcf02adec5e.json
+
+# Указываем команду для запуска
+CMD ["./main"]

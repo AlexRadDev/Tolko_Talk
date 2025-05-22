@@ -14,6 +14,7 @@ import (
 	"github.com/gotd/td/telegram/auth"
 	"github.com/gotd/td/tg"
 
+	"tg_app_micserv/internal/config"
 	"tg_app_micserv/internal/model"
 	"tg_app_micserv/tools/logger"
 )
@@ -29,18 +30,18 @@ type Client struct {
 }
 
 // NewClient создает новый клиент Telegram
-func NewClient(tgApiID int, tgApiHash, phone, twoFacPassword string, storage telegram.SessionStorage) *Client {
+func NewClient(cfg *config.Config, storage telegram.SessionStorage, path string) *Client {
 	if storage == nil {
-		storage = &session.FileStorage{Path: "session.json"} // Сохраняем сессию в session.json
+		storage = &session.FileStorage{Path: path} // session.json Сохраняем сессию в session.json (/app/session.json для докер)
 	}
-	tgAppClient := telegram.NewClient(tgApiID, tgApiHash, telegram.Options{
+	tgAppClient := telegram.NewClient(cfg.API_ID, cfg.API_Hash, telegram.Options{
 		SessionStorage: storage,
 	})
 	return &Client{
 		client:         tgAppClient,
 		tgAppClient:    tgAppClient,
-		phone:          phone,
-		twoFacPassword: twoFacPassword,
+		phone:          cfg.Phone,
+		twoFacPassword: cfg.Two_F_Password,
 		closer:         make(chan struct{}),
 	}
 }
@@ -61,7 +62,6 @@ func (c *Client) PostParser(ctx context.Context, tgNameChannel string, timePerio
 		}
 
 		// Если пользователь не авторизован — запускаем процесс авторизации
-
 		if !status.Authorized {
 			mylogger.Info("Пользователь не авторизован!!!")
 			authenticator := &customCodeAuthenticator{

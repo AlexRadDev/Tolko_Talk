@@ -1,5 +1,4 @@
 # Этот файл описывает конфигурацию сервисов для запуска docker контэйнеров Zookeeper, Kafka и UI for Apache Kafka.
-# Код создаёт три сервиса: Zookeeper, Kafka и kafka-ui для визуального управления.
 # http://localhost:9000
 
 version: '3'
@@ -13,6 +12,8 @@ services:
       - KAFKA_CLUSTERS_0_NAME=local
       - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka-1:9092,kafka-2:9092,kafka-3:9092
       - KAFKA_CLUSTERS_0_ZOOKEEPER=zookeeper:2181
+    networks:
+      - kafka-net
 
 
   zookeeper:
@@ -21,6 +22,8 @@ services:
       - "2181:2181"
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
+    networks:
+      - kafka-net
 
   kafka-1:
     image: wurstmeister/kafka
@@ -37,6 +40,8 @@ services:
       KAFKA_offsets_topic_replication_factor: 3
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - kafka-net
 
 
   kafka-2:
@@ -54,6 +59,8 @@ services:
       KAFKA_offsets_topic_replication_factor: 3
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - kafka-net
 
 
   kafka-3:
@@ -71,3 +78,61 @@ services:
       KAFKA_offsets_topic_replication_factor: 3
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+    - kafka-net
+
+
+  tg-bot:
+    image: my-tg-bot
+    ports:
+      - "5001:5001"
+    environment:
+      TG_BOT_TOKEN: 7964767527:AAHWj-x5ItudN-IyFEFwPaErz8yCa9y4Elw
+      SERVER_PORT: :5001
+      KAFKA_PORT_01: kafka-1:9092
+      KAFKA_PORT_02: kafka-2:9092
+      KAFKA_PORT_03: kafka-3:9092
+      NAME_TOPIC_01: tgbot-tgapp
+      NAME_TOPIC_02: texttospeech-tgbot
+      NAME_TOPIC_03: tgapp-texttospeech
+    networks:
+      - kafka-net
+
+  tg-app:
+    image: my-tg-app
+    ports:
+      - "5002:5002"
+    environment:
+      TELEGRAM_API_ID: 27872122
+      TELEGRAM_API_HASH: 6599085d191668bc4190c2cefdbb48f0
+      PHONE: +375298370019
+      TELEGRAM_PASSWORD: 7#_QA6g-1Hd5+zF=2?TE-jqk4pA
+      PORT: 5002
+      KAFKA_PORT_01: kafka-1:9092
+      KAFKA_PORT_02: kafka-2:9092
+      KAFKA_PORT_03: kafka-3:9092
+      KAFKA_TOPIC_01: tgbot-tgapp
+      KAFKA_TOPIC_02: tgapp-texttospeech
+    networks:
+      - kafka-net
+
+  text-to-speech:
+    image: my-text-to-speech
+    ports:
+      - "5003:5003"
+    environment:
+      SERVER_PORT: :5003
+      GOOGLE_CREDENTIALS_FILE: /app/semiotic-mender-459813-c9-fdcf02adec5e.json
+      KAFKA_PORT_01: kafka-1:9092
+      KAFKA_PORT_02: kafka-2:9092
+      KAFKA_PORT_03: kafka-3:9092
+      NAME_TOPIC_01: tgapp-texttospeech
+      NAME_TOPIC_02: texttospeech-tgbot
+      KAFKA_GROUP_ID: text-to-speech-group
+    networks:
+      - kafka-net
+
+
+networks:
+  kafka-net:
+    driver: bridge

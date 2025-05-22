@@ -8,8 +8,6 @@ import (
 	"os/signal"
 	"syscall"
 
-	"github.com/joho/godotenv"
-
 	"text_to_speech_app/internal/app_text_to_speech"
 	"text_to_speech_app/internal/kafka/consumer"
 	"text_to_speech_app/internal/kafka/producer"
@@ -28,11 +26,11 @@ func main() {
 	slog.SetDefault(myLogger)
 
 	// Загружаем переменные окружения из файла .env
-	if err := godotenv.Load(envPath); err != nil {
-		slog.Error("Ошибка загрузки .env файла", slog.Any("error", err))
-		os.Exit(1)
-	}
-	slog.Info("Успешно прочитали файл .env")
+	//if err := godotenv.Load(envPath); err != nil {
+	//	slog.Error("Ошибка загрузки .env файла", slog.Any("error", err))
+	//	os.Exit(1)
+	//}
+	//slog.Info("Успешно прочитали файл .env")
 
 	// Загружаем конфигурацию из переменных окружения
 	cfg, err := config.Load()

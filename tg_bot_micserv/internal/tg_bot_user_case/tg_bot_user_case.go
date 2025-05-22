@@ -7,7 +7,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 	"strconv"
 	"time"
 
@@ -259,70 +258,71 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 	}
 }
 
-// TODO: Разобраться
+//region Для реализации нажатий на InlineKeyboard кнопки
 // HandleCallback обрабатывает данные callback-запроса (нажатие на InlineKeyboard кнопки)
-func (uc *UseCase) HandleCallback(bot *tgbotapi.BotAPI, chatID int64, callbackData string) error {
-	const lblHandleCallback = "tg_bot_micserv/internal/tg_bot_user_case/tg_bot_user_case.go/HandleCallback()"
-	myLogger := logger.NewColorLogger(lblHandleCallback)
-	slog.SetDefault(myLogger)
-
-	// Получаем текущий запрос пользователя
-	request := uc.repo.GetRequest(chatID)
-
-	// Логируем получение callback
-	myLogger.Info("Получен callback", "chatID", chatID, "callbackData", callbackData)
-
-	// В зависимости от данных callback выполняем разные действия
-	// Здесь вы можете добавить обработку для конкретных callbackData ваших кнопок
-	// Например:
-	switch callbackData {
-	case "speed_0.5", "speed_0.75", "speed_1.0", "speed_1.2", "speed_1.5", "speed_2.0":
-		// Парсим скорость из callback-данных
-		speedStr := callbackData[6:] // получаем часть строки после "speed_"
-		speed, err := strconv.ParseFloat(speedStr, 64)
-		if err != nil {
-			myLogger.Error("Ошибка парсинга скорости", "error", err)
-			return err
-		}
-
-		// Сохраняем выбранную скорость
-		request.SpeakingRate = speed
-
-		// Отправляем сообщение о выбранной скорости
-		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Скорость сохранена: %s", speedStr))
-		msg.ReplyMarkup = MainKeyboard
-		if _, err := bot.Send(msg); err != nil {
-			return err
-		}
-
-	case "period_1", "period_2", "period_3", "period_4", "period_5", "period_6":
-		// Парсим период из callback-данных
-		periodStr := callbackData[7:] // получаем часть строки после "period_"
-		period, err := strconv.Atoi(periodStr)
-		if err != nil {
-			myLogger.Error("Ошибка парсинга периода", "error", err)
-			return err
-		}
-
-		// Сохраняем выбранный период
-		request.TimePeriod = period
-
-		// Отправляем сообщение о выбранном периоде
-		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Период сохранён: %d", period))
-		msg.ReplyMarkup = MainKeyboard
-		if _, err := bot.Send(msg); err != nil {
-			return err
-		}
-
-	default:
-		// Для неизвестных callback просто отправляем текст callback'а
-		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Получен callback: %s", callbackData))
-		if _, err := bot.Send(msg); err != nil {
-			return err
-		}
-	}
-
-	// Сохраняем обновлённый запрос
-	uc.repo.SaveRequest(chatID, request)
-	return nil
-}
+//func (uc *UseCase) HandleCallback(bot *tgbotapi.BotAPI, chatID int64, callbackData string) error {
+//	const lblHandleCallback = "tg_bot_micserv/internal/tg_bot_user_case/tg_bot_user_case.go/HandleCallback()"
+//	myLogger := logger.NewColorLogger(lblHandleCallback)
+//	slog.SetDefault(myLogger)
+//
+//	// Получаем текущий запрос пользователя
+//	request := uc.repo.GetRequest(chatID)
+//
+//	// Логируем получение callback
+//	myLogger.Info("Получен callback", "chatID", chatID, "callbackData", callbackData)
+//
+//	// В зависимости от данных callback выполняем разные действия
+//	// Здесь вы можете добавить обработку для конкретных callbackData ваших кнопок
+//	// Например:
+//	switch callbackData {
+//	case "speed_0.5", "speed_0.75", "speed_1.0", "speed_1.2", "speed_1.5", "speed_2.0":
+//		// Парсим скорость из callback-данных
+//		speedStr := callbackData[6:] // получаем часть строки после "speed_"
+//		speed, err := strconv.ParseFloat(speedStr, 64)
+//		if err != nil {
+//			myLogger.Error("Ошибка парсинга скорости", "error", err)
+//			return err
+//		}
+//
+//		// Сохраняем выбранную скорость
+//		request.SpeakingRate = speed
+//
+//		// Отправляем сообщение о выбранной скорости
+//		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Скорость сохранена: %s", speedStr))
+//		msg.ReplyMarkup = MainKeyboard
+//		if _, err := bot.Send(msg); err != nil {
+//			return err
+//		}
+//
+//	case "period_1", "period_2", "period_3", "period_4", "period_5", "period_6":
+//		// Парсим период из callback-данных
+//		periodStr := callbackData[7:] // получаем часть строки после "period_"
+//		period, err := strconv.Atoi(periodStr)
+//		if err != nil {
+//			myLogger.Error("Ошибка парсинга периода", "error", err)
+//			return err
+//		}
+//
+//		// Сохраняем выбранный период
+//		request.TimePeriod = period
+//
+//		// Отправляем сообщение о выбранном периоде
+//		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Период сохранён: %d", period))
+//		msg.ReplyMarkup = MainKeyboard
+//		if _, err := bot.Send(msg); err != nil {
+//			return err
+//		}
+//
+//	default:
+//		// Для неизвестных callback просто отправляем текст callback'а
+//		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Получен callback: %s", callbackData))
+//		if _, err := bot.Send(msg); err != nil {
+//			return err
+//		}
+//	}
+//
+//	// Сохраняем обновлённый запрос
+//	uc.repo.SaveRequest(chatID, request)
+//	return nil
+//}
+//endregion

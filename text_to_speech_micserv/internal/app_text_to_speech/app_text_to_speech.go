@@ -7,9 +7,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
-	"fmt"
 	"io"
-	"io/ioutil"
 	"log/slog"
 	"sort"
 
@@ -133,11 +131,11 @@ func (s *Service) Synthesize(ctx context.Context, messageFromTGAPP *model_kafka.
 	audioDataRequest := combinedAudio.Bytes()
 
 	//region Сохранение аудиодорожки в файл
-	err = ioutil.WriteFile("audio.mp3", audioDataRequest, 0644)
-	if err != nil {
-		myLogger.Error(fmt.Sprintf("Не удалось сохранить аудио", err))
-	}
-	myLogger.Info("Аудио файл сохранен!")
+	//err = ioutil.WriteFile("audio.mp3", audioDataRequest, 0644)
+	//if err != nil {
+	//	myLogger.Error(fmt.Sprintf("Не удалось сохранить аудио", err))
+	//}
+	//myLogger.Info("Аудио файл сохранен!")
 	//endregion
 
 	RequestForTGAPP = model_kafka.InitKafkaRequestForTTS(messageFromTGAPP.ChatID, audioDataRequest)

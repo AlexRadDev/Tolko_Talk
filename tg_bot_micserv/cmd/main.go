@@ -1,3 +1,5 @@
+// curl https://api.telegram.org/bot<7964767527:AAHWj-x5ItudN-IyFEFwPaErz8yCa9y4Elw>/getMe
+
 package main
 
 import (
@@ -7,12 +9,10 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"tg_bot/internal/kafka/consumer"
 	"time"
 
-	"github.com/joho/godotenv"
-
 	"tg_bot/internal/config"
-	"tg_bot/internal/kafka/consumer"
 	"tg_bot/internal/kafka/producer"
 	"tg_bot/internal/repo_user_requests"
 	"tg_bot/internal/server"
@@ -32,20 +32,22 @@ func main() {
 	myLoggeg := logger.NewColorLogger(lblmain)
 	slog.SetDefault(myLoggeg)
 
-	// Загружаем переменные окружения из файла .env
-	if err := godotenv.Load(envPath); err != nil {
-		slog.Error("Ошибка загрузки .env файла", "error", err)
-		os.Exit(1)
-	}
-	slog.Info("Успешно прочитали файл .env")
+	//Загружаем переменные окружения из файла .env
+	//if err := godotenv.Load(envPath); err != nil {
+	//	slog.Error("Ошибка загрузки .env файла", "error", err)
+	//	os.Exit(1)
+	//}
+	//slog.Info("Успешно прочитали файл .env")
 
 	// Загружаем конфигурацию из переменных окружения
 	cfg, err := config.Load()
 	if err != nil {
 		slog.Error("Ошибка загрузки конфигурации", "error", err)
-		os.Exit(1)
+		//os.Exit(1)
 	}
 	slog.Info("Успешно создали объект кофига")
+
+	slog.Info(fmt.Sprintf("Токен равен: %v", cfg.TGBotToken))
 
 	// Инициализируем Telegram-бот с токеном из конфигурации
 	tgBot, err := tg_bot_init.NewBot(cfg.TGBotToken)

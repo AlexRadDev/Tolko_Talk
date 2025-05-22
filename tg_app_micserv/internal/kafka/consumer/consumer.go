@@ -44,14 +44,15 @@ func NewConsumer(cfg *config.Config) *Consumer { // serviceParser *service_parse
 }
 
 // Consume читает сообщения из Kafka и передаёт их в service_parser.PostParser.
-func (c *Consumer) Consume(ctx context.Context, cfg *config.Config, sessionStorage *tg_session_storage.FileSessionStorage, producer *producer.Producer) error {
+func (c *Consumer) Consume(ctx context.Context, cfg *config.Config, sessionStorage *tg_session_storage.FileSessionStorage, producer *producer.Producer, pathSessionJson string) error {
 	const lblConsume = "tg_app_micserv/internal/kafka/consumer/consumer.go/Consume()"
 	myLogger := logger.NewColorLogger(lblConsume)
 	myLogger.Info("Подписались на топик Kafaka: \"tgbot-tgapp\"")
 
 	for {
 		// Создаем новый клиент для каждой итерации
-		tgClient := tg_init_parser.NewClient(cfg.API_ID, cfg.API_Hash, cfg.Phone, cfg.Two_F_Password, sessionStorage)
+		tgClient := tg_init_parser.NewClient(cfg, sessionStorage, pathSessionJson)
+		myLogger.Info("Успешно создали tg клиента")
 		serviceParser := service_parser.NewServiceParser(tgClient)
 
 		// Читаем сообщение из Kafka

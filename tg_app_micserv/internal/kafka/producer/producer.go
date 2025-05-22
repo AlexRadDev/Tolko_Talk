@@ -155,7 +155,7 @@ func (p *Producer) getControllerConn(ctx context.Context) (*kafka.Conn, error) {
 	// Получаем контроллера кластера
 	controller, err := conn.Controller()
 	if err != nil {
-		conn.Close() // Закрываем соединение при ошибке
+		conn.Close()
 		myLogger.Error(fmt.Sprintf("Не удалось получить контроллер: %v", err))
 		return nil, fmt.Errorf("получение контроллера: %w", err)
 	}
@@ -171,7 +171,6 @@ func (p *Producer) getControllerConn(ctx context.Context) (*kafka.Conn, error) {
 		return nil, fmt.Errorf("подключение к контроллеру: %w", err)
 	}
 
-	// Закрываем первое соединение, так как оно больше не нужно
 	conn.Close()
 
 	return ctrlConn, nil

@@ -13,6 +13,7 @@ type Config struct {
 	KafkaPort       []string // адрес брокера Kafka
 	NameTopic01     string   // имя топика Kafka для отправки сообщений
 	NameTopic02     string   // имя топика Kafka для принятия сообщений
+	NameTopic04     string   // имя топика Kafka для принятия сообщений
 	KafkaTopicSlise []string // Срез имен топиков Kafka
 }
 
@@ -64,6 +65,11 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("NAME_TOPIC_03 не указан")
 	}
 	kafkaTopicSlise = append(kafkaTopicSlise, nameTopic03)
+	nameTopic04 := os.Getenv("NAME_TOPIC_04")
+	if nameTopic04 == "" {
+		return nil, fmt.Errorf("NAME_TOPIC_04 не указан")
+	}
+	kafkaTopicSlise = append(kafkaTopicSlise, nameTopic04)
 
 	// Валидация имени топика
 	for _, name := range kafkaTopicSlise {
@@ -81,6 +87,7 @@ func Load() (*Config, error) {
 		KafkaPort:       kafkaPort,
 		NameTopic01:     nameTopic01,
 		NameTopic02:     nameTopic02,
+		NameTopic04:     nameTopic04,
 		KafkaTopicSlise: kafkaTopicSlise,
 	}, nil
 }
