@@ -25,7 +25,6 @@ func NewServer(cfg *config.Config, handler http.Handler) *Server {
 	const lblServer = "internal/server/server.go/NewServer()"
 	myLogger := logger.NewColorLogger(lblServer)
 
-	// Настраиваем HTTP-сервер
 	srv := &http.Server{
 		Addr:    cfg.ServerPort,
 		Handler: handler,
@@ -37,23 +36,27 @@ func NewServer(cfg *config.Config, handler http.Handler) *Server {
 	}
 }
 
-// Start запускает HTTP-сервер в отдельной горутине
+// Start запускает HTTP-сервер
 func (s *Server) Start() error {
 	s.myLogger.Info(fmt.Sprintf("Запуск HTTP-сервера на порту: %v", s.srv.Addr))
+
 	if err := s.srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 		s.myLogger.Error(fmt.Sprintf("Ошибка работы сервера: %v", "error", err))
 		return err
 	}
+
 	return nil
 }
 
-// Shutdown выполняет graceful shutdown сервера
+// Shutdown выполняет graceful shutdown для сервера
 func (s *Server) Shutdown(ctx context.Context) error {
 	s.myLogger.Info("Инициируем graceful shutdown сервера")
+
 	if err := s.srv.Shutdown(ctx); err != nil {
 		s.myLogger.Error(fmt.Sprintf("Ошибка при завершении работы сервера: %v", err))
 		return err
 	}
+	
 	s.myLogger.Info("Сервер успешно завершил работу")
 	return nil
 }

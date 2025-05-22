@@ -1,7 +1,5 @@
-// Файл bot_usecase.go реализует бизнес-логику Telegram-бота. Содержит слой
-// UseCase, который обрабатывает входящие сообщения, взаимодействует с репозиторием
-// и отправляет ответы через Telegram Bot API. Соответствует принципам чистой
-// архитектуры, разделяя бизнес-логику от инфраструктуры и доставки.
+// Файл bot_usecase.go обрабатывает входящие сообщения, взаимодействует с репозиторием.
+// Отправляет ответы через Telegram Bot API.
 
 package tg_bot_user_case
 
@@ -11,10 +9,11 @@ import (
 	"fmt"
 	"log/slog"
 	"strconv"
-	"tg_bot/internal/kafka/producer"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+
+	"tg_bot/internal/kafka/producer"
 	"tg_bot/internal/repo_user_requests"
 	"tg_bot/tools/logger"
 )
@@ -39,8 +38,8 @@ func init() {
 
 // Структура UseCase содержит бизнес-логику бота
 type UseCase struct {
-	repo          *repo_user_requests.RepoUserRequests // repo — интерфейс репозитория для работы с данными
-	kafkaProducer *producer.Producer                   // Указатель на Kafka-продюсер для отправки сообщений
+	repo          *repo_user_requests.RepoUserRequests // Интерфейс репозитория для работы с данными
+	kafkaProducer *producer.Producer                   // Указатель на продюсера для отправки сообщений в Kafka
 }
 
 // NewUseCase создаёт новый экземпляр UseCase
@@ -55,12 +54,10 @@ func NewUseCase(repo *repo_user_requests.RepoUserRequests, kafkaProducer *produc
 func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, text string) error {
 	const lblHandleMessage = "tg_bot_micserv/internal/tg_bot_user_case/tg_bot_user_case.go/HandleMessage()"
 	myLogger := logger.NewColorLogger(lblHandleMessage)
-	//slog.SetDefault(myLogger)
 
 	// Получаем запрос пользователя из репозитория
 	request := uc.repo.GetRequest(chatID)
 
-	// Обрабатываем команду /start
 	if text == "/start" {
 		myLogger.Info("Обработка команды /start", "chatID", chatID)
 		msg := tgbotapi.NewMessage(chatID, "Добро пожаловать! Выберите действие:")
@@ -77,8 +74,8 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 	switch text {
 	case "Выбрать канал":
 
-		request.AwaitingChannelInput = true    // Устанавливаем флаг ожидания ввода канала
-		keyboard := tgbotapi.NewReplyKeyboard( // Создаём клавиатуру с кнопкой "Назад"
+		request.AwaitingChannelInput = true // Устанавливаем флаг ожидания ввода канала
+		keyboard := tgbotapi.NewReplyKeyboard(
 			tgbotapi.NewKeyboardButtonRow(
 				tgbotapi.NewKeyboardButton("Назад"),
 			),
@@ -129,7 +126,6 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 			return err
 		}
 		uc.repo.SaveRequest(chatID, request)
-		// Возвращаем nil, так как обработка успешна
 		return nil
 
 	case "Период времени":
@@ -181,9 +177,9 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 	case "Отправить":
 		request.ChatID = chatID
 
-		// Валидация
+		// Валидация запроса клиента
 		if request.NameChanel == "" {
-			msg := tgbotapi.NewMessage(chatID, "Ошибка: Не выбран канал. Пожалуйста, выберите канал перед отправкой.")
+			msg := tgbotapi.NewMessage(chatID, "Ошибка: Канал не выбран. Пожалуйста, введите ссылку на желаемый телеграмм канала перед отправкой.")
 			bot.Send(msg)
 			return nil
 		}
@@ -211,11 +207,11 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 		}
 		myLogger.Info(fmt.Sprintf("Запрос под номнром: %v, успешно ушёл в kafka", request.ChatID))
 
-		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Запрос отправлен в обработку. Канал: %s, Скорость: %.1fx, Период: %d час.", request.NameChanel, request.SpeakingRate, request.TimePeriod))
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Ваш запрос отправлен на обработку: \nКанал: %s, \nСкорость аудио: %.1fx, \nПериод времени: %d час., \nПожалуйста дождитесь ответа...", request.NameChanel, request.SpeakingRate, request.TimePeriod))
 		msg.ReplyMarkup = MainKeyboard
 		bot.Send(msg)
 
-		// Очистка состояния
+		// Очистка состояния запроса
 		request.TimePeriod = 0
 		request.SpeakingRate = 0
 		request.NameChanel = ""

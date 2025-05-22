@@ -3,23 +3,21 @@ package config
 import (
 	"fmt"
 	"os"
-
-	"tg_bot/tools/logger"
+	"strings"
 )
 
 // Структура Config содержит конфигурационные параметры
 type Config struct {
-	TGBotToken     string // токен Telegram-бота
-	ServerPort     string // адрес HTTP-сервера
-	KafkaPort      string // адрес брокера Kafka
-	NameTopicKafka string // имя топика Kafka для отправки сообщений
+	TGBotToken      string   // токен Telegram-бота
+	ServerPort      string   // адрес HTTP-сервера
+	KafkaPort       []string // адрес брокера Kafka
+	NameTopic01     string   // имя топика Kafka для отправки сообщений
+	NameTopic02     string   // имя топика Kafka для принятия сообщений
+	KafkaTopicSlise []string // Срез имен топиков Kafka
 }
 
 // Load загружает конфигурацию из переменных окружения
 func Load() (*Config, error) {
-	const lblLoad = "tg_bot_micserv/internal/config/config.go/Load()"
-	myLogger := logger.NewColorLogger(lblLoad)
-
 	token := os.Getenv("TG_BOT_TOKEN")
 	if token == "" {
 		return nil, fmt.Errorf("TG_BOT_TOKEN не указан")
@@ -32,23 +30,57 @@ func Load() (*Config, error) {
 	}
 
 	// Получаем адрес брокера Kafka
-	kafkaPort := os.Getenv("KAFKA_PORT")
-	if kafkaPort == "" {
-		return nil, fmt.Errorf("KAFKA_PORT не указан")
+	kafkaPort := make([]string, 0)
+	kafkaPort = append(kafkaPort, os.Getenv("KAFKA_PORT_01"))
+	if kafkaPort[0] == "" {
+		return nil, fmt.Errorf("KAFKA_PORT_01 не указан")
 	}
-	myLogger.Info(fmt.Sprintf("Успешно записали kafkaPort = %v", kafkaPort))
+	kafkaPort = append(kafkaPort, os.Getenv("KAFKA_PORT_02"))
+	if kafkaPort[1] == "" {
+		return nil, fmt.Errorf("KAFKA_PORT_02 не указан")
+	}
+	kafkaPort = append(kafkaPort, os.Getenv("KAFKA_PORT_03"))
+	if kafkaPort[2] == "" {
+		return nil, fmt.Errorf("KAFKA_PORT_03 не указан")
+	}
 
-	// Получаем топик Kafka
-	nameTopicKafka := os.Getenv("NAME_KAFKA_TOPIC")
-	if nameTopicKafka == "" {
-		return nil, fmt.Errorf("NAME_KAFKA_TOPIC не указан")
+	// Получаем имена топиков Kafka
+	kafkaTopicSlise := make([]string, 0)
+
+	nameTopic01 := os.Getenv("NAME_TOPIC_01")
+	if nameTopic01 == "" {
+		return nil, fmt.Errorf("NAME_TOPIC_01 не указан")
 	}
-	myLogger.Info(fmt.Sprintf("Успешно записали nameTopicKafka = %v", nameTopicKafka))
+	kafkaTopicSlise = append(kafkaTopicSlise, nameTopic01)
+
+	nameTopic02 := os.Getenv("NAME_TOPIC_02")
+	if nameTopic02 == "" {
+		return nil, fmt.Errorf("NAME_TOPIC_02 не указан")
+	}
+	kafkaTopicSlise = append(kafkaTopicSlise, nameTopic02)
+
+	nameTopic03 := os.Getenv("NAME_TOPIC_03")
+	if nameTopic03 == "" {
+		return nil, fmt.Errorf("NAME_TOPIC_03 не указан")
+	}
+	kafkaTopicSlise = append(kafkaTopicSlise, nameTopic03)
+
+	// Валидация имени топика
+	for _, name := range kafkaTopicSlise {
+		if name == "" || len(name) > 253 {
+			return nil, fmt.Errorf("Недопустимое имя топика: %s", name)
+		}
+		if strings.ContainsAny(name, " !@#$%^&*()+=[]{}|;:,<>?") {
+			return nil, fmt.Errorf("Имя топика содержит недопустимые символы: %s", name)
+		}
+	}
 
 	return &Config{
-		TGBotToken:     token,
-		ServerPort:     serverPort,
-		KafkaPort:      kafkaPort,
-		NameTopicKafka: nameTopicKafka,
+		TGBotToken:      token,
+		ServerPort:      serverPort,
+		KafkaPort:       kafkaPort,
+		NameTopic01:     nameTopic01,
+		NameTopic02:     nameTopic02,
+		KafkaTopicSlise: kafkaTopicSlise,
 	}, nil
 }

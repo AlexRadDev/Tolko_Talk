@@ -1,6 +1,5 @@
 // Файл tg_bot_router.go реализует HTTP-роутер для обработки входящих запросов от bota.
 // Отвечает за десериализацию JSON-данных, вызов бизнес-логики и отправку ответов.
-// Соответствует слою доставки в чистой архитектуре, изолируя HTTP-обработку от бизнес-логики.
 
 package tg_bot_router
 
@@ -45,12 +44,10 @@ func (r *Router) HandleUpdate(w http.ResponseWriter, req *http.Request) {
 
 	// Проверяем, содержит ли обновление сообщение
 	if update.Message != nil {
-		// Передаём сообщение в бизнес-логику
 		r.tgBotUserCase.HandleMessage(ctx, r.tgBot, update.Message.Chat.ID, update.Message.Text)
 		myLogger.Info("Успешно передали запрос в бизнес-логику")
 	}
 
-	// Возвращаем статус 200 OK
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -70,7 +67,6 @@ func (r *Router) ProcessUpdate(update tgbotapi.Update) {
 
 	// Обработка нажатий на кнопки (CallbackQuery)
 	if update.CallbackQuery != nil {
-		// Отвечаем на callback, чтобы убрать часы загрузки с кнопки
 		callback := tgbotapi.NewCallback(update.CallbackQuery.ID, "")
 		if _, err := r.tgBot.Request(callback); err != nil {
 			myLogger.Error("Ошибка при ответе на callback", "error", err)
@@ -78,7 +74,7 @@ func (r *Router) ProcessUpdate(update tgbotapi.Update) {
 
 		// Обрабатываем данные callback
 		r.tgBotUserCase.HandleCallback(r.tgBot, update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Data)
-		myLogger.Info("Успешно обработали callback")
+		myLogger.Info("Ksandr Успешно обработали callback")
 		return
 	}
 }

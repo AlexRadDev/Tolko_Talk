@@ -1,16 +1,21 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"github.com/joho/godotenv"
+	"log"
 	"log/slog"
 	"net/http"
 	"os"
-	"tg_bot/internal/kafka/producer"
-	"tg_bot/internal/server"
+	"time"
+
+	"github.com/joho/godotenv"
 
 	"tg_bot/internal/config"
+	"tg_bot/internal/kafka/consumer"
+	"tg_bot/internal/kafka/producer"
 	"tg_bot/internal/repo_user_requests"
+	"tg_bot/internal/server"
 	"tg_bot/internal/tg_bot_init"
 	tg_bot_router2 "tg_bot/internal/tg_bot_router"
 	"tg_bot/internal/tg_bot_user_case"
@@ -24,8 +29,8 @@ const (
 func main() {
 	// Инициализируем логгер с меткой
 	const lblmain = "cmd/main.go/main()"
-	log := logger.NewColorLogger(lblmain)
-	slog.SetDefault(log)
+	myLoggeg := logger.NewColorLogger(lblmain)
+	slog.SetDefault(myLoggeg)
 
 	// Загружаем переменные окружения из файла .env
 	if err := godotenv.Load(envPath); err != nil {
@@ -54,9 +59,42 @@ func main() {
 	repo := repo_user_requests.NewRepoUserRequests()
 	slog.Info("Успешно создали хранилище для состояния пользователей")
 
+	ctx, cancel := context.WithCancel(context.Background())
+
 	// Инициализируем Kafka-продюсер
-	kafkaProducer := producer.NewProducer(cfg.KafkaPort, cfg.NameTopicKafka) //[]string{cfg.KafkaPort}
-	slog.Info(fmt.Sprintf("Успешно создали Kafka-продюсер, Name Topic: %v", cfg.NameTopicKafka))
+	kafkaProducer := producer.NewProducer(cfg)
+	defer func() {
+		if err := kafkaProducer.Close(); err != nil {
+			slog.Error("Ошибка при закрытии Kafka-продюсера", "error", err)
+		} else {
+			slog.Info("Kafka-продюсер успешно закрыт")
+		}
+	}()
+	slog.Info("Успешно создали Kafka-продюсер")
+
+	// Создание Топиков в kafka
+	for _, nameTopic := range cfg.KafkaTopicSlise {
+		kafkaProducer.CheckingAndCreatingTopics(ctx, nameTopic)
+	}
+
+	// Инициализируем Kafka-консьюмер
+	kafkaConsumer := consumer.NewConsumer(cfg)
+	defer func() {
+		if err := kafkaConsumer.Close(); err != nil {
+			slog.Error("Ошибка при закрытии Kafka-консьюмера", "error", err)
+		} else {
+			slog.Info("Kafka-консьюмер успешно закрыт")
+		}
+	}()
+	slog.Info("Успешно создали kafka Consumer-а")
+
+	// Запуск консьюмера
+	go func() {
+		if err := kafkaConsumer.Consume(ctx, tgBot); err != nil {
+			log.Fatalf("Ошибка в работе консьюмера: %v", err)
+		}
+	}()
+	defer cancel()
 
 	// Создаём слой бизнес-логики, внедряя репозиторий
 	userCase := tg_bot_user_case.NewUseCase(repo, kafkaProducer)
@@ -97,4 +135,14 @@ func main() {
 
 	// Ожидаем сигнал завершения и выполняем graceful shutdown
 	srv.WaitForShutdown()
+
+	// Отменяем контекст для завершения всех горутин
+	cancel()
+	slog.Info("Инициировано завершение всех горутин")
+
+	// Даём время на завершение операций (например, завершение обработки сообщений)
+	select {
+	case <-time.After(5 * time.Second):
+		slog.Info("Программа завершена после ожидания завершения горутин")
+	}
 }
