@@ -7,18 +7,26 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"strings"
+	//"log/slog"
 	"strconv"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"tg_bot/internal/kafka/producer"
 	"tg_bot/internal/repo_user_requests"
+	"tg_bot/internal/storage"
 	"tg_bot/tools/logger"
 )
 
 // MainKeyboard Определяем главную клавиатуру бота
 var MainKeyboard = tgbotapi.NewReplyKeyboard(
 	tgbotapi.NewKeyboardButtonRow(
-		tgbotapi.NewKeyboardButton("Вставить канал"),
+		tgbotapi.NewKeyboardButton("Добавить канал в избранное"),
+		tgbotapi.NewKeyboardButton("Выбрать канал из списка"),
+	),
+	tgbotapi.NewKeyboardButtonRow(
+		tgbotapi.NewKeyboardButton("Вставить канал по ссылке"),
 		tgbotapi.NewKeyboardButton("Скорость речи"),
 	),
 	tgbotapi.NewKeyboardButtonRow(
@@ -37,13 +45,15 @@ func init() {
 type UseCase struct {
 	repo          *repo_user_requests.RepoUserRequests // Интерфейс репозитория для работы с данными
 	kafkaProducer *producer.Producer
+	storage       storage.StorageInterface
 }
 
 // NewUseCase создаёт новый экземпляр UseCase
-func NewUseCase(repo *repo_user_requests.RepoUserRequests, kafkaProducer *producer.Producer) *UseCase {
+func NewUseCase(repo *repo_user_requests.RepoUserRequests, kafkaProducer *producer.Producer, storage storage.StorageInterface) *UseCase {
 	return &UseCase{
 		repo:          repo,
 		kafkaProducer: kafkaProducer,
+		storage:       storage,
 	}
 }
 
@@ -67,10 +77,59 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 		uc.repo.SaveRequest(chatID, request) // Сохраняем обновлённый запрос
 		return nil
 	}
-
-	// TODO: Сделать выбор каналов из списка на которые пользователь подписан
+	
 	switch text {
-	case "Вставить канал":
+	case "Добавить канал в избранное":
+		request.AwaitingChannelInput = true // Устанавливаем флаг ожидания ввода канала
+		keyboard := tgbotapi.NewReplyKeyboard(
+			tgbotapi.NewKeyboardButtonRow(
+				tgbotapi.NewKeyboardButton("Назад"),
+			),
+		)
+		keyboard.ResizeKeyboard = true
+		keyboard.Selective = false
+		msg := tgbotapi.NewMessage(chatID, "Введите имя и ссылку на канал в формате: Название|Ссылка (например, MyChannel|https://t.me/mychannel)")
+		msg.ReplyMarkup = keyboard
+		if _, err := bot.Send(msg); err != nil {
+			myLogger.Error("Ошибка отправки сообщения", "error", err)
+			return err
+		}
+		uc.repo.SaveRequest(chatID, request)
+		return nil
+
+	case "Выбрать канал из списка":
+		channels := uc.storage.GetChannels(chatID)
+		if len(channels) == 0 {
+			msg := tgbotapi.NewMessage(chatID, "У вас нет добавленных каналов. Сначала добавьте канал в избранное.")
+			msg.ReplyMarkup = MainKeyboard
+			if _, err := bot.Send(msg); err != nil {
+				myLogger.Error("Ошибка отправки сообщения", "error", err)
+				return err
+			}
+			return nil
+		}
+
+		// Создаём инлайн-клавиатуру со списком каналов
+		var buttons [][]tgbotapi.InlineKeyboardButton
+		for name, link := range channels {
+			button := tgbotapi.NewInlineKeyboardButtonData(name, fmt.Sprintf("channel_%s|%s", name, link))
+			buttons = append(buttons, tgbotapi.NewInlineKeyboardRow(button))
+		}
+		// Добавляем кнопку "Назад"
+		buttons = append(buttons, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Назад", "back_to_main"),
+		))
+
+		inlineKeyboard := tgbotapi.NewInlineKeyboardMarkup(buttons...)
+		msg := tgbotapi.NewMessage(chatID, "Выберите канал из списка:")
+		msg.ReplyMarkup = inlineKeyboard
+		if _, err := bot.Send(msg); err != nil {
+			myLogger.Error("Ошибка отправки сообщения с инлайн-клавиатурой", "error", err)
+			return err
+		}
+		return nil
+
+	case "Вставить канал по ссылке":
 
 		request.AwaitingChannelInput = true // Устанавливаем флаг ожидания ввода канала
 		keyboard := tgbotapi.NewReplyKeyboard(
@@ -219,29 +278,41 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 	default:
 		if request.AwaitingChannelInput {
 			if len(text) > 0 {
-
-				request.NameChanel = text
+				// Проверяем формат ввода: Название|Ссылка
+				parts := strings.SplitN(text, "|", 2)
+				if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
+					msg := tgbotapi.NewMessage(chatID, "Ошибка: Введите имя и ссылку в формате: Название|Ссылка")
+					if _, err := bot.Send(msg); err != nil {
+						myLogger.Error("Ошибка отправки сообщения", "error", err)
+						return err
+					}
+					return nil
+				}
+				nameChannel, linkChannel := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+				uc.storage.AddChannel(chatID, nameChannel, linkChannel)
 				request.AwaitingChannelInput = false
-				msg := tgbotapi.NewMessage(chatID, "Канал сохранён: "+text+".\nВыберите действие:")
+				msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Канал сохранён в избранное: %s\nВыберите действие:", nameChannel))
 				msg.ReplyMarkup = MainKeyboard
 				if _, err := bot.Send(msg); err != nil {
+					myLogger.Error("Ошибка отправки сообщения", "error", err)
 					return err
 				}
 				uc.repo.SaveRequest(chatID, request)
 				return nil
 			}
 
-			msg := tgbotapi.NewMessage(chatID, "Ошибка: Введите имя канала")
+			msg := tgbotapi.NewMessage(chatID, "Ошибка: Введите имя и ссылку в формате: Название|Ссылка")
 			if _, err := bot.Send(msg); err != nil {
+				myLogger.Error("Ошибка отправки сообщения", "error", err)
 				return err
 			}
-			uc.repo.SaveRequest(chatID, request)
 			return nil
 		}
 
 		msg := tgbotapi.NewMessage(chatID, "Пожалуйста, выберите действие:")
 		msg.ReplyMarkup = MainKeyboard
 		if _, err := bot.Send(msg); err != nil {
+			myLogger.Error("Ошибка отправки сообщения", "error", err)
 			return err
 		}
 		uc.repo.SaveRequest(chatID, request)
@@ -249,71 +320,57 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 	}
 }
 
-//region Для реализации нажатий на InlineKeyboard кнопки
 // HandleCallback обрабатывает данные callback-запроса (нажатие на InlineKeyboard кнопки)
-//func (uc *UseCase) HandleCallback(bot *tgbotapi.BotAPI, chatID int64, callbackData string) error {
-//	const lblHandleCallback = "tg_bot_micserv/internal/tg_bot_user_case/tg_bot_user_case.go/HandleCallback()"
-//	myLogger := logger.NewColorLogger(lblHandleCallback)
-//	slog.SetDefault(myLogger)
-//
-//	// Получаем текущий запрос пользователя
-//	request := uc.repo.GetRequest(chatID)
-//
-//	// Логируем получение callback
-//	myLogger.Info("Получен callback", "chatID", chatID, "callbackData", callbackData)
-//
-//	// В зависимости от данных callback выполняем разные действия
-//	// Здесь вы можете добавить обработку для конкретных callbackData ваших кнопок
-//	// Например:
-//	switch callbackData {
-//	case "speed_0.5", "speed_0.75", "speed_1.0", "speed_1.2", "speed_1.5", "speed_2.0":
-//		// Парсим скорость из callback-данных
-//		speedStr := callbackData[6:] // получаем часть строки после "speed_"
-//		speed, err := strconv.ParseFloat(speedStr, 64)
-//		if err != nil {
-//			myLogger.Error("Ошибка парсинга скорости", "error", err)
-//			return err
-//		}
-//
-//		// Сохраняем выбранную скорость
-//		request.SpeakingRate = speed
-//
-//		// Отправляем сообщение о выбранной скорости
-//		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Скорость сохранена: %s", speedStr))
-//		msg.ReplyMarkup = MainKeyboard
-//		if _, err := bot.Send(msg); err != nil {
-//			return err
-//		}
-//
-//	case "period_1", "period_2", "period_3", "period_4", "period_5", "period_6":
-//		// Парсим период из callback-данных
-//		periodStr := callbackData[7:] // получаем часть строки после "period_"
-//		period, err := strconv.Atoi(periodStr)
-//		if err != nil {
-//			myLogger.Error("Ошибка парсинга периода", "error", err)
-//			return err
-//		}
-//
-//		// Сохраняем выбранный период
-//		request.TimePeriod = period
-//
-//		// Отправляем сообщение о выбранном периоде
-//		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Период сохранён: %d", period))
-//		msg.ReplyMarkup = MainKeyboard
-//		if _, err := bot.Send(msg); err != nil {
-//			return err
-//		}
-//
-//	default:
-//		// Для неизвестных callback просто отправляем текст callback'а
-//		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Получен callback: %s", callbackData))
-//		if _, err := bot.Send(msg); err != nil {
-//			return err
-//		}
-//	}
-//
-//	// Сохраняем обновлённый запрос
-//	uc.repo.SaveRequest(chatID, request)
-//	return nil
-//}
-//endregion
+func (uc *UseCase) HandleCallback(bot *tgbotapi.BotAPI, chatID int64, callbackData string) error {
+	const lblHandleCallback = "tg_bot_micserv/internal/tg_bot_user_case/tg_bot_user_case.go/HandleCallback()"
+	myLogger := logger.NewColorLogger(lblHandleCallback)
+
+	// Получаем текущий запрос пользователя
+	request := uc.repo.GetRequest(chatID)
+	myLogger.Info("Получен callback", "chatID", chatID, "callbackData", callbackData)
+
+	switch callbackData {
+	case "back_to_main":
+		// Возвращение в главное меню
+		msg := tgbotapi.NewMessage(chatID, "Вернулись в главное меню.\nВыберите действие:")
+		msg.ReplyMarkup = MainKeyboard
+		if _, err := bot.Send(msg); err != nil {
+			myLogger.Error("Ошибка отправки сообщения", "error", err)
+			return err
+		}
+
+	default:
+		if strings.HasPrefix(callbackData, "channel_") {
+			// Извлекаем имя и ссылку канала из callbackData
+			parts := strings.SplitN(callbackData[8:], "|", 2)
+			if len(parts) != 2 {
+				myLogger.Error("Неверный формат callbackData", "callbackData", callbackData)
+				msg := tgbotapi.NewMessage(chatID, "Ошибка: Неверный формат данных канала.")
+				if _, err := bot.Send(msg); err != nil {
+					return err
+				}
+				return nil
+			}
+			nameChannel, linkChannel := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
+			//request.NameChanel = nameChannel
+			request.NameChanel = linkChannel
+			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Канал выбран: %s\nВыберите действие:", nameChannel))
+			msg.ReplyMarkup = MainKeyboard
+			if _, err := bot.Send(msg); err != nil {
+				myLogger.Error("Ошибка отправки сообщения", "error", err)
+				return err
+			}
+		} else {
+			// Для неизвестных callback отправляем текст callback'а
+			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Получен неизвестный callback: %s", callbackData))
+			if _, err := bot.Send(msg); err != nil {
+				myLogger.Error("Ошибка отправки сообщения", "error", err)
+				return err
+			}
+		}
+	}
+
+	// Сохраняем обновлённый запрос
+	uc.repo.SaveRequest(chatID, request)
+	return nil
+}

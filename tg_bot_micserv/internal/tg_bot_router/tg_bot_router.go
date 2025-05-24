@@ -67,16 +67,16 @@ func (r *Router) ProcessUpdate(update tgbotapi.Update) {
 
 	//region Для реализации нажатий на InlineKeyboard кнопки
 	// Обработка нажатий на кнопки (CallbackQuery)
-	//if update.CallbackQuery != nil {
-	//	callback := tgbotapi.NewCallback(update.CallbackQuery.ID, "")
-	//	if _, err := r.tgBot.Request(callback); err != nil {
-	//		myLogger.Error("Ошибка при ответе на callback", "error", err)
-	//	}
-	//
-	//	// Обрабатываем данные callback
-	//	r.tgBotUserCase.HandleCallback(r.tgBot, update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Data)
-	//	myLogger.Info("Ksandr Успешно обработали callback")
-	//	return
-	//}
+	if update.CallbackQuery != nil {
+		callback := tgbotapi.NewCallback(update.CallbackQuery.ID, "")
+		if _, err := r.tgBot.Request(callback); err != nil {
+			myLogger.Error("Ошибка при ответе на callback", "error", err)
+		}
+
+		// Обрабатываем данные callback
+		r.tgBotUserCase.HandleCallback(r.tgBot, update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Data)
+		myLogger.Info("Ksandr Успешно обработали callback")
+		return
+	}
 	//endregion
 }

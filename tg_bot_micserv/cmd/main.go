@@ -9,13 +9,14 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"tg_bot/internal/kafka/consumer"
 	"time"
 
 	"tg_bot/internal/config"
+	"tg_bot/internal/kafka/consumer"
 	"tg_bot/internal/kafka/producer"
 	"tg_bot/internal/repo_user_requests"
 	"tg_bot/internal/server"
+	"tg_bot/internal/storage"
 	"tg_bot/internal/tg_bot_init"
 	tg_bot_router2 "tg_bot/internal/tg_bot_router"
 	"tg_bot/internal/tg_bot_user_case"
@@ -113,8 +114,13 @@ func main() {
 	}()
 	defer cancel()
 
+	MapStorage := storage.NewMapStorage()
+	slog.Info("Успешно создали объект MapStorage")
+	var storageInterface storage.StorageInterface
+	storageInterface = MapStorage
+
 	// Создаём слой бизнес-логики, внедряя репозиторий
-	userCase := tg_bot_user_case.NewUseCase(repo, kafkaProducer)
+	userCase := tg_bot_user_case.NewUseCase(repo, kafkaProducer, storageInterface)
 	slog.Info("Успешно создали объект userCase")
 
 	// Создаём HTTP-роутер, внедряя бот и бизнес-логику
