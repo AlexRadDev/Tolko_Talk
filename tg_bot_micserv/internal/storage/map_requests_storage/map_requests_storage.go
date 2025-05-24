@@ -2,7 +2,7 @@
 // Использует map для хранения данных в памяти.
 // Реализация соответствует интерфейсу UserRequestRepository, обеспечивая независимость слоя бизнес-логики от хранения.
 
-package repo_user_requests
+package map_requests_storage
 
 import (
 	"sync"

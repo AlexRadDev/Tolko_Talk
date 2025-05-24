@@ -1,6 +1,8 @@
-package storage
+package map_channel_list_storage
 
-import "sync"
+import (
+	"sync"
+)
 
 type MapStorage struct {
 	MapStorage map[int64]map[string]string
@@ -34,4 +36,16 @@ func (s *MapStorage) GetChannels(chatID int64) map[string]string {
 		return map[string]string{}
 	}
 	return channels
+}
+
+func (s *MapStorage) DeleteChannels(chatID int64, nameChannel string) {
+	s.Mutex.Lock()
+	defer s.Mutex.Unlock()
+
+	if daughterMap, ok := s.MapStorage[chatID]; ok { // daughterMap - дочерняя мапа по ключу chatID
+		delete(daughterMap, nameChannel) // удаляет ключ(nameChannel) и значение из дочерней мапы daughterMap
+		if len(daughterMap) == 0 {
+			delete(s.MapStorage, chatID)
+		}
+	}
 }

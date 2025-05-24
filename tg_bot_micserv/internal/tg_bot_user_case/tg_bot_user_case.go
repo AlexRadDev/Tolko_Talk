@@ -7,31 +7,33 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
-	//"log/slog"
 	"strconv"
+	"strings"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 
 	"tg_bot/internal/kafka/producer"
-	"tg_bot/internal/repo_user_requests"
-	"tg_bot/internal/storage"
+	"tg_bot/internal/storage/interface_channel_list_storage"
+	"tg_bot/internal/storage/interface_requests_storage"
 	"tg_bot/tools/logger"
 )
 
 // MainKeyboard Определяем главную клавиатуру бота
 var MainKeyboard = tgbotapi.NewReplyKeyboard(
 	tgbotapi.NewKeyboardButtonRow(
-		tgbotapi.NewKeyboardButton("Добавить канал в избранное"),
 		tgbotapi.NewKeyboardButton("Выбрать канал из списка"),
+		tgbotapi.NewKeyboardButton("Выбрать скорость речи"),
+	),
+	tgbotapi.NewKeyboardButtonRow(
+		tgbotapi.NewKeyboardButton("Выбрать период времени"),
+		tgbotapi.NewKeyboardButton("Отправить"),
+	),
+	tgbotapi.NewKeyboardButtonRow(
+		tgbotapi.NewKeyboardButton("Добавить канал в избранное"),
+		tgbotapi.NewKeyboardButton("Удалить канал из избранного"),
 	),
 	tgbotapi.NewKeyboardButtonRow(
 		tgbotapi.NewKeyboardButton("Вставить канал по ссылке"),
-		tgbotapi.NewKeyboardButton("Скорость речи"),
-	),
-	tgbotapi.NewKeyboardButtonRow(
-		tgbotapi.NewKeyboardButton("Период времени"),
-		tgbotapi.NewKeyboardButton("Отправить"),
 	),
 )
 
@@ -43,13 +45,13 @@ func init() {
 
 // Структура UseCase содержит бизнес-логику бота
 type UseCase struct {
-	repo          *repo_user_requests.RepoUserRequests // Интерфейс репозитория для работы с данными
+	repo          interface_requests_storage.UserRequestRepository // Интерфейс репозитория для работы с данными
 	kafkaProducer *producer.Producer
-	storage       storage.StorageInterface
+	storage       interface_channel_list_storage.StorageInterface
 }
 
 // NewUseCase создаёт новый экземпляр UseCase
-func NewUseCase(repo *repo_user_requests.RepoUserRequests, kafkaProducer *producer.Producer, storage storage.StorageInterface) *UseCase {
+func NewUseCase(repo interface_requests_storage.UserRequestRepository, kafkaProducer *producer.Producer, storage interface_channel_list_storage.StorageInterface) *UseCase {
 	return &UseCase{
 		repo:          repo,
 		kafkaProducer: kafkaProducer,
@@ -77,7 +79,7 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 		uc.repo.SaveRequest(chatID, request) // Сохраняем обновлённый запрос
 		return nil
 	}
-	
+
 	switch text {
 	case "Добавить канал в избранное":
 		request.AwaitingChannelInput = true // Устанавливаем флаг ожидания ввода канала
@@ -129,6 +131,38 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 		}
 		return nil
 
+	case "Удалить канал из избранного":
+		channels := uc.storage.GetChannels(chatID)
+		if len(channels) == 0 {
+			msg := tgbotapi.NewMessage(chatID, "У вас нет добавленных каналов. Сначала добавьте канал в избранное.")
+			msg.ReplyMarkup = MainKeyboard
+			if _, err := bot.Send(msg); err != nil {
+				myLogger.Error("Ошибка отправки сообщения", "error", err)
+				return err
+			}
+			return nil
+		}
+
+		// Создаём инлайн-клавиатуру со списком каналов для удаления
+		var buttons [][]tgbotapi.InlineKeyboardButton
+		for name := range channels {
+			button := tgbotapi.NewInlineKeyboardButtonData(name, fmt.Sprintf("delete_channel_%s", name))
+			buttons = append(buttons, tgbotapi.NewInlineKeyboardRow(button))
+		}
+		// Добавляем кнопку "Назад"
+		buttons = append(buttons, tgbotapi.NewInlineKeyboardRow(
+			tgbotapi.NewInlineKeyboardButtonData("Назад", "back_to_main"),
+		))
+
+		inlineKeyboard := tgbotapi.NewInlineKeyboardMarkup(buttons...)
+		msg := tgbotapi.NewMessage(chatID, "Выберите канал для удаления:")
+		msg.ReplyMarkup = inlineKeyboard
+		if _, err := bot.Send(msg); err != nil {
+			myLogger.Error("Ошибка отправки сообщения с инлайн-клавиатурой", "error", err)
+			return err
+		}
+		return nil
+
 	case "Вставить канал по ссылке":
 
 		request.AwaitingChannelInput = true // Устанавливаем флаг ожидания ввода канала
@@ -148,7 +182,7 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 		uc.repo.SaveRequest(chatID, request) // Сохраняем обновлённый запрос
 		return nil
 
-	case "Скорость речи":
+	case "Выбрать скорость речи":
 		keyboard := tgbotapi.NewReplyKeyboard(
 			tgbotapi.NewKeyboardButtonRow(
 				tgbotapi.NewKeyboardButton("0.5"),
@@ -185,7 +219,7 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 		uc.repo.SaveRequest(chatID, request)
 		return nil
 
-	case "Период времени":
+	case "Выбрать период времени":
 		keyboard := tgbotapi.NewReplyKeyboard(
 			tgbotapi.NewKeyboardButtonRow(
 				tgbotapi.NewKeyboardButton("1"),
@@ -352,9 +386,17 @@ func (uc *UseCase) HandleCallback(bot *tgbotapi.BotAPI, chatID int64, callbackDa
 				return nil
 			}
 			nameChannel, linkChannel := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
-			//request.NameChanel = nameChannel
-			request.NameChanel = linkChannel
+			request.NameChanel = linkChannel // Сохраняем ссылку канала
 			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Канал выбран: %s\nВыберите действие:", nameChannel))
+			msg.ReplyMarkup = MainKeyboard
+			if _, err := bot.Send(msg); err != nil {
+				myLogger.Error("Ошибка отправки сообщения", "error", err)
+				return err
+			}
+		} else if strings.HasPrefix(callbackData, "delete_channel_") {
+			nameChannel := strings.TrimSpace(callbackData[15:])
+			uc.storage.DeleteChannels(chatID, nameChannel)
+			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Канал %s удалён из избранного.\nВыберите действие:", nameChannel))
 			msg.ReplyMarkup = MainKeyboard
 			if _, err := bot.Send(msg); err != nil {
 				myLogger.Error("Ошибка отправки сообщения", "error", err)

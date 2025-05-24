@@ -9,14 +9,16 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"tg_bot/internal/storage/interface_requests_storage"
 	"time"
 
 	"tg_bot/internal/config"
 	"tg_bot/internal/kafka/consumer"
 	"tg_bot/internal/kafka/producer"
-	"tg_bot/internal/repo_user_requests"
 	"tg_bot/internal/server"
-	"tg_bot/internal/storage"
+	"tg_bot/internal/storage/interface_channel_list_storage"
+	"tg_bot/internal/storage/map_channel_list_storage"
+	"tg_bot/internal/storage/map_requests_storage"
 	"tg_bot/internal/tg_bot_init"
 	tg_bot_router2 "tg_bot/internal/tg_bot_router"
 	"tg_bot/internal/tg_bot_user_case"
@@ -59,8 +61,10 @@ func main() {
 	slog.Info(fmt.Sprintf("Бот авторизован как @%s", tgBot.Self.UserName))
 
 	// Создаём in-memory репозиторий для хранения состояния пользователей
-	repo := repo_user_requests.NewRepoUserRequests()
+	repo := map_requests_storage.NewRepoUserRequests()
 	slog.Info("Успешно создали хранилище для состояния пользователей")
+	var mapRequests interface_requests_storage.UserRequestRepository
+	mapRequests = repo
 
 	ctx, cancel := context.WithCancel(context.Background())
 
@@ -114,13 +118,14 @@ func main() {
 	}()
 	defer cancel()
 
-	MapStorage := storage.NewMapStorage()
+	// Создаём хранилище для запросов пользователя
+	MapStorage := map_channel_list_storage.NewMapStorage()
 	slog.Info("Успешно создали объект MapStorage")
-	var storageInterface storage.StorageInterface
+	var storageInterface interface_channel_list_storage.StorageInterface
 	storageInterface = MapStorage
 
 	// Создаём слой бизнес-логики, внедряя репозиторий
-	userCase := tg_bot_user_case.NewUseCase(repo, kafkaProducer, storageInterface)
+	userCase := tg_bot_user_case.NewUseCase(mapRequests, kafkaProducer, storageInterface)
 	slog.Info("Успешно создали объект userCase")
 
 	// Создаём HTTP-роутер, внедряя бот и бизнес-логику

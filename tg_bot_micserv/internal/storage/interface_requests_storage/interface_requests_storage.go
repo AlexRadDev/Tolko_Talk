@@ -1,7 +1,7 @@
 // Файл user_request.go определяет интерфейс репозитория для работы с состоянием запросов пользователей.
 // Интерфейс абстрагирует доступ к данным, и позволяет легко заменить реализацию репозитория (например, на базу данных).
 
-package user_request
+package interface_requests_storage
 
 import (
 	"tg_bot/internal/model/bot_request"
