@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/segmentio/kafka-go"
@@ -19,14 +20,24 @@ type Consumer struct {
 }
 
 // NewConsumer создаёт новый экземпляр Kafka-консьюмера.
-func NewConsumer(cfg *config.Config) *Consumer { // serviceParser *service_parser.ServiceParser
+func NewConsumer(cfg *config.Config, nomerTopika int) *Consumer { // serviceParser *service_parser.ServiceParser
+
+	var nameTopic string
+	switch nomerTopika {
+	case 1:
+		nameTopic = cfg.NameTopic02
+	case 2:
+		nameTopic = cfg.NameTopic04
+	}
+
 	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:     cfg.KafkaPort,     // Список брокеров
-		Topic:       cfg.NameTopic02,   // Топик для чтения
-		GroupID:     "group_01",        // ID группы консьюмеров
-		StartOffset: kafka.FirstOffset, // читать с начала
-		MinBytes:    10e3,              // Минимальный размер батча (10KB)
-		MaxBytes:    10e6,              // Максимальный размер батча (10MB)
+		Brokers:     cfg.KafkaPort,          // Список брокеров
+		Topic:       nameTopic,              // Топик для чтения
+		GroupID:     "group_01",             // ID группы консьюмеров
+		StartOffset: kafka.FirstOffset,      // читать с начала
+		MinBytes:    1,                      // Минимальный размер батча (1KB)
+		MaxBytes:    10e6,                   // Максимальный размер батча (10MB)
+		MaxWait:     100 * time.Millisecond, // ждать не более 100мс
 	})
 
 	return &Consumer{
@@ -35,12 +46,13 @@ func NewConsumer(cfg *config.Config) *Consumer { // serviceParser *service_parse
 }
 
 // Consume читает сообщения из Kafka и передаёт их в service_parser.PostParser.
-func (c *Consumer) Consume(ctx context.Context, tgBot *tgbotapi.BotAPI) error {
+func (c *Consumer) Consume01(ctx context.Context, tgBot *tgbotapi.BotAPI) error {
 	const lblConsume = "tg_bot_micserv/internal/kafka/consumer/consumer.go/Consume()"
 	myLogger := logger.NewColorLogger(lblConsume)
 
 	myLogger.Info("Подписались на топик Kafaka: \"texttospeech-tgbot\"")
 	for {
+		myLogger.Info("Consume01 слушает топик text_to_speech → tg_bot")
 		// Читаем сообщение из Kafka
 		msg, err := c.Reader.ReadMessage(ctx)
 		if err != nil {
@@ -49,7 +61,7 @@ func (c *Consumer) Consume(ctx context.Context, tgBot *tgbotapi.BotAPI) error {
 		}
 		myLogger.Info(fmt.Sprintf("Получено сообщение из топика: %s", msg.Topic))
 
-		var messageFromTGB *model_kafka.KafkaRequestForTGBOT // Структура для Unmarshal сообщения от TextToSpeech из Kafka
+		var messageFromTGB model_kafka.KafkaRequestForTGBOT // Структура для Unmarshal сообщения от TextToSpeech из Kafka
 		if err := json.Unmarshal(msg.Value, &messageFromTGB); err != nil {
 			myLogger.Error(fmt.Sprintf("Ошибка десериализации сообщения: %v", err))
 			continue
@@ -67,6 +79,37 @@ func (c *Consumer) Consume(ctx context.Context, tgBot *tgbotapi.BotAPI) error {
 			continue
 		}
 		myLogger.Info(fmt.Sprintf("Аудио отправлено в Telegram, chatID: %d", messageFromTGB.ChatID))
+	}
+}
+
+// Consume читает сообщения из Kafka и передаёт их в service_parser.PostParser.
+func (c *Consumer) Consume02(ctx context.Context, tgBot *tgbotapi.BotAPI) error {
+	const lblConsume = "tg_bot_micserv/internal/kafka/consumer/consumer.go/Consume()"
+	myLogger := logger.NewColorLogger(lblConsume)
+
+	myLogger.Info("Подписались на топик Kafaka: \"tgbot-tgapp\"")
+	for {
+		myLogger.Info("Consume02 слушает топик tg_bot → tg_app")
+		// Читаем сообщение из Kafka
+		msg, err := c.Reader.ReadMessage(ctx)
+		if err != nil {
+			myLogger.Error(fmt.Sprintf("Ошибка чтения сообщения из Kafka: %v", err))
+			return fmt.Errorf("чтение сообщения: %w", err)
+		}
+		myLogger.Info(fmt.Sprintf("Получено сообщение из топика: %s", msg.Topic))
+
+		var messageFromTGB model_kafka.KafkaRequestForTGappTGbot
+		if err := json.Unmarshal(msg.Value, &messageFromTGB); err != nil {
+			myLogger.Error(fmt.Sprintf("Ошибка десериализации сообщения: %v", err))
+			continue
+		}
+
+		msgToSend := tgbotapi.NewMessage(messageFromTGB.ChatID, messageFromTGB.TextForUsers)
+		if _, err := tgBot.Send(msgToSend); err != nil {
+			myLogger.Error(fmt.Sprintf("Ошибка отправки текста в Telegram, chatID: %d: %v", messageFromTGB.ChatID, err))
+			continue
+		}
+		myLogger.Info(fmt.Sprintf("Текстовое сообщение отправлено в Telegram, chatID: %d", messageFromTGB.ChatID))
 	}
 }
 

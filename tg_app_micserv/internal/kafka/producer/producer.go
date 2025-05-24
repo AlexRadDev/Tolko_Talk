@@ -64,6 +64,8 @@ func (p *Producer) SendMessage(ctx context.Context, nameTopic string, data []byt
 		Value: data, // Передаём сериализованные данные
 	}
 
+	p.Writer.Topic = nameTopic
+
 	// Отправляем сообщение в Kafka
 	err = p.Writer.WriteMessages(context.Background(), msg)
 	if err != nil {

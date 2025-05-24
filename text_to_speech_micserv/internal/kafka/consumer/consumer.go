@@ -7,10 +7,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"text_to_speech_app/internal/text_to_audio/interface_text_to_audio"
+	"time"
 
 	"github.com/segmentio/kafka-go"
 
-	"text_to_speech_app/internal/app_text_to_speech"
 	"text_to_speech_app/internal/config"
 	"text_to_speech_app/internal/kafka/producer"
 	"text_to_speech_app/internal/model/model_kafka"
@@ -19,31 +20,36 @@ import (
 
 // Consumer представляет Kafka-консьюмер.
 type Consumer struct {
-	Reader   *kafka.Reader
-	Producer *producer.Producer
+	Reader      *kafka.Reader
+	Producer    *producer.Producer
+	TextToAudio interface_text_to_audio.InterfaceTextToAudio
 }
 
 // NewConsumer создаёт новый экземпляр Kafka-консьюмера.
-func NewConsumer(cfg *config.Config, producerKafka *producer.Producer) *Consumer { // serviceParser *service_parser.ServiceParser
+func NewConsumer(cfg *config.Config, producerKafka *producer.Producer, interfaceTextToAudio interface_text_to_audio.InterfaceTextToAudio) *Consumer { // serviceParser *service_parser.ServiceParser
 
 	// Конфигурация Kafka Reader
 	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:     cfg.KafkaPort,     // Список брокеров
-		Topic:       cfg.TopicConsum,   // Топик для чтения
-		GroupID:     "group_01",        // ID группы консьюмеров
-		StartOffset: kafka.FirstOffset, // читать с начала
-		MinBytes:    10e3,              // Минимальный размер батча (10KB)
-		MaxBytes:    10e6,              // Максимальный размер батча (10MB)
+		Brokers:     cfg.KafkaPort,          // Список брокеров
+		Topic:       cfg.TopicConsum,        // Топик для чтения
+		GroupID:     "group_01",             // ID группы консьюмеров
+		StartOffset: kafka.FirstOffset,      // читать с начала
+		MinBytes:    1,                      // Минимальный размер батча (10KB)
+		MaxBytes:    10e6,                   // Максимальный размер батча (10MB)
+		MaxWait:     100 * time.Millisecond, // ждать не более 100мс
 	})
 
 	return &Consumer{
-		Reader:   reader,
-		Producer: producerKafka,
+		Reader:      reader,
+		Producer:    producerKafka,
+		TextToAudio: interfaceTextToAudio,
 	}
 }
 
 // Consume читает сообщения из Kafka и передаёт их в service_parser.PostParser.
-func (c *Consumer) Consume(ctx context.Context, cfg *config.Config, appTextToTpeech *app_text_to_speech.Service) error { //sessionStorage *tg_session_storage.FileSessionStorage
+func (c *Consumer) Consume(ctx context.Context, cfg *config.Config) error { //sessionStorage *tg_session_storage.FileSessionStorage
+	// appTextToTpeech *app_text_to_speech.Service
+
 	const lblConsume = "text_to_speech_micserv/internal/kafka/consumer/consumer.go/Consume()"
 	myLogger := logger.NewColorLogger(lblConsume)
 	myLogger.Info("Подписались на топик Kafaka: \"tgapp-texttospeech\"")
@@ -65,7 +71,7 @@ func (c *Consumer) Consume(ctx context.Context, cfg *config.Config, appTextToTpe
 		}
 
 		// Передаём данные в TextToTpeech Synthesize для синтэза аудио
-		responseForTGAPP, err1 := appTextToTpeech.Synthesize(ctx, messageFromTGAPP)
+		responseForTGAPP, err1 := c.TextToAudio.Synthesize(ctx, messageFromTGAPP)
 		if err1 != nil {
 			myLogger.Error(fmt.Sprintf("Ошибка обработки сообщения в PostParser: %v", err1))
 			continue

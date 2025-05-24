@@ -95,6 +95,7 @@ services:
       NAME_TOPIC_01: tgbot-tgapp
       NAME_TOPIC_02: texttospeech-tgbot
       NAME_TOPIC_03: tgapp-texttospeech
+      NAME_TOPIC_04: tgapp-tgbot
     networks:
       - kafka-net
 
@@ -113,6 +114,7 @@ services:
       KAFKA_PORT_03: kafka-3:9092
       KAFKA_TOPIC_01: tgbot-tgapp
       KAFKA_TOPIC_02: tgapp-texttospeech
+      KAFKA_TOPIC_03: tgapp-tgbot
     networks:
       - kafka-net
 

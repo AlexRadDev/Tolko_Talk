@@ -16,12 +16,12 @@ import (
 
 // Server представляет HTTP-сервер
 type Server struct {
-	srv        *http.Server                // объект HTTP-сервера
-	ttsService *app_text_to_speech.Service // указатель на сервис Text-to-Speech
+	srv        *http.Server                            // объект HTTP-сервера
+	ttsService *google_text_to_audio.GoogleTextToAudio // указатель на сервис Text-to-Speech
 }
 
 // NewServer создаёт новый HTTP-сервер
-func NewServer(port string, ttsService *app_text_to_speech.Service) *Server {
+func NewServer(port string, ttsService *google_text_to_audio.GoogleTextToAudio) *Server {
 	// Создаём мультиплексор для маршрутизации
 	mux := http.NewServeMux()
 	srv := &Server{

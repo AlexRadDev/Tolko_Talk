@@ -1,7 +1,7 @@
 // Файл app_text_to_speech.go реализует бизнес-логику микросервиса Text-to-Speech.
 // Содержит слой UseCase, который взаимодействует с Google Text-to-Speech API для синтеза речи.
 
-package app_text_to_speech
+package google_text_to_audio
 
 import (
 	"bytes"
@@ -14,31 +14,32 @@ import (
 	"github.com/hajimehoshi/go-mp3"
 	"google.golang.org/api/option"
 	texttospeech "google.golang.org/api/texttospeech/v1"
+
 	"text_to_speech_app/internal/config"
 	"text_to_speech_app/internal/model/model_kafka"
 	"text_to_speech_app/tools/logger"
 )
 
-// Service представляет сервис Text-to-Speech
-type Service struct {
+// GoogleTextToAudio представляет сервис Text-to-Speech
+type GoogleTextToAudio struct {
 	credentialsFile string // Путь к файлу учетных данных Google Cloud
 }
 
-// NewService создаёт новый экземпляр сервиса Text-to-Speech
-func NewService(cfg *config.Config) *Service {
-	return &Service{
+// NewGoogleTextToAudio создаёт новый экземпляр сервиса Text-to-Speech
+func NewGoogleTextToAudio(cfg *config.Config) *GoogleTextToAudio {
+	return &GoogleTextToAudio{
 		credentialsFile: cfg.GoogleCredentialsFile,
 	}
 }
 
 // Synthesize выполняет синтез речи на основе запроса
-func (s *Service) Synthesize(ctx context.Context, messageFromTGAPP *model_kafka.KafkaMessageFromTGAPP) (*model_kafka.KafkaRequestForTGAPP, error) {
+func (s *GoogleTextToAudio) Synthesize(ctx context.Context, messageFromTGAPP *model_kafka.KafkaMessageFromTGAPP) (*model_kafka.KafkaRequestForTGAPP, error) {
 	const lblSynthesize = "text_to_speech_micserv/internal/app_text_to_speech/app_text_to_speech.go → Synthesize()"
 	myLogger := logger.NewColorLogger(lblSynthesize)
 
 	ctx = context.Background()
 
-	// Создаём новый клиент Text-to-Speech
+	// Создаём новый клиент Text-to-Speech Google
 	client, err := texttospeech.NewService(ctx, option.WithCredentialsFile(s.credentialsFile))
 	if err != nil {
 		myLogger.Error("Не удалось создать клиент Text-to-Speech", slog.Any("error", err))

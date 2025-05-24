@@ -7,10 +7,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strconv"
-	"time"
-
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+	"strconv"
 
 	"tg_bot/internal/kafka/producer"
 	"tg_bot/internal/repo_user_requests"
@@ -20,7 +18,7 @@ import (
 // MainKeyboard Определяем главную клавиатуру бота
 var MainKeyboard = tgbotapi.NewReplyKeyboard(
 	tgbotapi.NewKeyboardButtonRow(
-		tgbotapi.NewKeyboardButton("Выбрать канал"),
+		tgbotapi.NewKeyboardButton("Вставить канал"),
 		tgbotapi.NewKeyboardButton("Скорость речи"),
 	),
 	tgbotapi.NewKeyboardButtonRow(
@@ -31,14 +29,14 @@ var MainKeyboard = tgbotapi.NewReplyKeyboard(
 
 // init Инициализируем настройки клавиатуры
 func init() {
-	MainKeyboard.ResizeKeyboard = true // Устанавливаем авторазмер клавиатуры
+	MainKeyboard.ResizeKeyboard = true // Устанавливаем авто размер клавиатуры
 	MainKeyboard.Selective = false     // Отключаем выборочную видимость клавиатуры
 }
 
 // Структура UseCase содержит бизнес-логику бота
 type UseCase struct {
 	repo          *repo_user_requests.RepoUserRequests // Интерфейс репозитория для работы с данными
-	kafkaProducer *producer.Producer                   // Указатель на продюсера для отправки сообщений в Kafka
+	kafkaProducer *producer.Producer
 }
 
 // NewUseCase создаёт новый экземпляр UseCase
@@ -70,8 +68,9 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 		return nil
 	}
 
+	// TODO: Сделать выбор каналов из списка на которые пользователь подписан
 	switch text {
-	case "Выбрать канал":
+	case "Вставить канал":
 
 		request.AwaitingChannelInput = true // Устанавливаем флаг ожидания ввода канала
 		keyboard := tgbotapi.NewReplyKeyboard(
@@ -80,7 +79,7 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 			),
 		)
 
-		keyboard.ResizeKeyboard = true // Устанавливаем авторазмер клавиатуры
+		keyboard.ResizeKeyboard = true // Устанавливаем авто размер клавиатуры
 		keyboard.Selective = false     // Отключаем выборочную видимость
 		msg := tgbotapi.NewMessage(chatID, "Введите имя ТГ канала, или ссылку на канал")
 		msg.ReplyMarkup = keyboard               // Устанавливаем клавиатуру
@@ -108,7 +107,7 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 		)
 		keyboard.ResizeKeyboard = true
 		keyboard.Selective = false
-		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Выберите скорость речи (время: %d)", time.Now().Unix()))
+		msg := tgbotapi.NewMessage(chatID, "Выберите скорость речи:")
 		msg.ReplyMarkup = keyboard
 		if _, err := bot.Send(msg); err != nil {
 			return err
@@ -119,7 +118,7 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 	case "0.5", "0.75", "1.0", "1.2", "1.5", "2.0":
 		rate, _ := strconv.ParseFloat(text, 64)
 		request.SpeakingRate = rate
-		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Скорость сохранена: %s. Выберите действие:", text))
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Скорость сохранена: %s.\nВыберите действие:", text))
 		msg.ReplyMarkup = MainKeyboard
 		if _, err := bot.Send(msg); err != nil {
 			return err
@@ -145,7 +144,7 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 		)
 		keyboard.ResizeKeyboard = true
 		keyboard.Selective = false
-		msg := tgbotapi.NewMessage(chatID, "Выберите период:")
+		msg := tgbotapi.NewMessage(chatID, "Выберите период времени:")
 		msg.ReplyMarkup = keyboard
 		if _, err := bot.Send(msg); err != nil {
 			return err
@@ -156,7 +155,7 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 	case "1", "2", "3", "4", "5", "6":
 		period, _ := strconv.Atoi(text)
 		request.TimePeriod = period
-		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Период сохранён: %s. Выберите действие:", text))
+		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Период времени сохранён: %s ч..\nВыберите действие:", text))
 		msg.ReplyMarkup = MainKeyboard
 		if _, err := bot.Send(msg); err != nil {
 			return err
@@ -165,7 +164,7 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 		return nil
 
 	case "Назад":
-		msg := tgbotapi.NewMessage(chatID, "Вернулись в главное меню. Выберите действие:")
+		msg := tgbotapi.NewMessage(chatID, "Вернулись в главное меню.\nВыберите действие:")
 		msg.ReplyMarkup = MainKeyboard
 		if _, err := bot.Send(msg); err != nil {
 			return err
@@ -178,7 +177,7 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 
 		// Валидация запроса клиента
 		if request.NameChanel == "" {
-			msg := tgbotapi.NewMessage(chatID, "Ошибка: Канал не выбран. Пожалуйста, введите ссылку на желаемый телеграмм канала перед отправкой.")
+			msg := tgbotapi.NewMessage(chatID, "Ошибка: Канал не выбран.\nПожалуйста, введите ссылку на желаемый телеграмм канала перед отправкой.")
 			bot.Send(msg)
 			return nil
 		}
@@ -200,11 +199,11 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 		err = uc.kafkaProducer.SendMessage(ctx, uc.kafkaProducer.Writer.Topic, jsonData)
 		if err != nil {
 			myLogger.Error(fmt.Sprintf("Ошибка отправки сообщения в Kafka: %v", err))
-			msg := tgbotapi.NewMessage(chatID, "Ошибка отправки. Повторите позже.")
+			msg := tgbotapi.NewMessage(chatID, "Ошибка отправки запроса.\nПожалуйста попробуйте позже.")
 			bot.Send(msg)
 			return err
 		}
-		myLogger.Info(fmt.Sprintf("Запрос под номнром: %v, успешно ушёл в kafka", request.ChatID))
+		myLogger.Info(fmt.Sprintf("Запрос под номером: %v, успешно отправлен в kafka", request.ChatID))
 
 		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Ваш запрос отправлен на обработку: \nКанал: %s, \nСкорость аудио: %.1fx, \nПериод времени: %d час., \nПожалуйста дождитесь ответа...", request.NameChanel, request.SpeakingRate, request.TimePeriod))
 		msg.ReplyMarkup = MainKeyboard
@@ -220,18 +219,10 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 	default:
 		if request.AwaitingChannelInput {
 			if len(text) > 0 {
-				//if text[0] != '@' {
-				//	msg := tgbotapi.NewMessage(chatID, "Ошибка: Имя канала должно начинаться с @. Введите заново.")
-				//	if _, err := bot.Send(msg); err != nil {
-				//		return err
-				//	}
-				//	uc.repo.SaveRequest(chatID, request)
-				//	return nil
-				//}
 
 				request.NameChanel = text
 				request.AwaitingChannelInput = false
-				msg := tgbotapi.NewMessage(chatID, "Канал сохранён: "+text+". Выберите действие:")
+				msg := tgbotapi.NewMessage(chatID, "Канал сохранён: "+text+".\nВыберите действие:")
 				msg.ReplyMarkup = MainKeyboard
 				if _, err := bot.Send(msg); err != nil {
 					return err

@@ -17,6 +17,7 @@ type Config struct {
 	KafkaPort      []string
 	KafkaTopic_01  string
 	KafkaTopic_02  string
+	KafkaTopic_03  string
 }
 
 // Load загружает данные из переменных среды
@@ -74,6 +75,11 @@ func Load() (*Config, error) {
 		return nil, errors.New("KAFKA_TOPIC_02 не указан")
 	}
 
+	kafkaTopic_03 := os.Getenv("KAFKA_TOPIC_03")
+	if kafkaTopic_03 == "" {
+		return nil, errors.New("KAFKA_TOPIC_03 не указан")
+	}
+
 	return &Config{
 		API_ID:         apiID,
 		API_Hash:       apiHash,
@@ -83,5 +89,6 @@ func Load() (*Config, error) {
 		KafkaPort:      kafkaPort,
 		KafkaTopic_01:  kafkaTopic_01,
 		KafkaTopic_02:  kafkaTopic_02,
+		KafkaTopic_03:  kafkaTopic_03,
 	}, nil
 }

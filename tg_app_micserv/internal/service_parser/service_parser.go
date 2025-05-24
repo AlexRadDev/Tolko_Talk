@@ -5,6 +5,7 @@ package service_parser
 import (
 	"context"
 	"fmt"
+	"regexp"
 	"strings"
 	"tg_app_micserv/internal/kafka/producer"
 	"time"
@@ -33,19 +34,8 @@ func (s *ServiceParser) PostParser(ctx context.Context, nameChannel string, time
 	const lbl = "tg_app_micserv/internal/service_parser/service_parser.go/PostParser()"
 	mylogger := logger.NewColorLogger(lbl)
 
-	// Форматируем имя канала
-	channelNameForParserFunc := ""
-	if len(nameChannel) > 0 && nameChannel[0] == '@' {
-		channelNameForParserFunc = nameChannel[1:]
-	}
-	const prefix = "https://t.me/"
-	if len(nameChannel) > 0 && strings.HasPrefix(nameChannel, prefix) {
-		channelNameForParserFunc = strings.TrimPrefix(nameChannel, prefix)
-	}
-	mylogger.Info(fmt.Sprintf("Имя канала успешно извлечено: %v", channelNameForParserFunc))
-
-	// Получаем сообщения из fetcher (например, Telegram-клиента)
-	messages, err := s.parser.PostParser(ctx, channelNameForParserFunc, timePeriod)
+	// Получаем постов из ТГ канала
+	messages, err := s.parser.PostParser(ctx, nameChannel, timePeriod)
 	if err != nil {
 		mylogger.Error(fmt.Sprintf("Ошибка из PostParser: %v", err))
 		return nil, err
@@ -53,7 +43,7 @@ func (s *ServiceParser) PostParser(ctx context.Context, nameChannel string, time
 	mylogger.Info("Успешно спарсили посты")
 
 	// Создаем карту для хранения обработанных сообщений
-	messageMap := make(map[int64]string)
+	messageMap := make(map[int64]string, 0)
 
 	// Обрабатываем каждое сообщение
 	for _, msg := range messages {
@@ -65,19 +55,22 @@ func (s *ServiceParser) PostParser(ctx context.Context, nameChannel string, time
 		}
 	}
 
-	//mylogger.Info(fmt.Sprintf("Итоговый текст из функции PostParser(): %v", messageMap))
-	//// Отправляем карту в Kafka
-	//if err := s.producer.ProduceMessages(ctx, messageMap); err != nil {
-	//	return "", fmt.Errorf("ошибка отправки в Kafka: %w", err)
-	//}
-
 	return messageMap, nil
 }
 
-//----------------------------------------------------------------------------------------------------------------------
-
 // FormatText очищает и форматирует текст постов
 func FormatText(input string) string {
+	// Удаление временных меток и дат через регулярки
+	timePatterns := []*regexp.Regexp{
+		// regexp.MustCompile(`\b\d{1,2}:\d{2}(:\d{2})?\b`),               // 12:34 или 14:20:59
+		regexp.MustCompile(`\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b`),      // 09.05.2025, 9-5-25
+		regexp.MustCompile(`\b\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?`), // 2025-05-24 12:34
+	}
+	for _, re := range timePatterns {
+		input = re.ReplaceAllString(input, "")
+	}
+
+	// Удаление пустых строк
 	lines := strings.Split(input, "\n")
 	var nonEmptyLines []string
 	for _, line := range lines {
@@ -87,24 +80,22 @@ func FormatText(input string) string {
 	}
 	text := strings.Join(nonEmptyLines, "\n")
 
+	// Фильтрация разрешённых символов
 	var cleanedText strings.Builder
 	for _, char := range text {
 		if (char >= 'а' && char <= 'я') ||
 			(char >= 'А' && char <= 'Я') ||
 			char == 'ё' || char == 'Ё' ||
-			string(char) == " " ||
-			string(char) == "." || string(char) == "," || string(char) == "!" ||
-			string(char) == "?" || string(char) == ";" || string(char) == ":" ||
-			string(char) == "—" || string(char) == "–" || string(char) == "-" ||
-			string(char) == "(" || string(char) == ")" || string(char) == "«" ||
-			string(char) == "»" || string(char) == "\"" || string(char) == "'" ||
-			char == '\n' {
+			(char >= '0' && char <= '9') ||
+			char == ' ' || char == '\n' ||
+			strings.ContainsRune(".,!?;:—–-()«»\"'", char) {
 			cleanedText.WriteRune(char)
 		}
 	}
 
 	result := cleanedText.String()
 
+	// Обрезка до 4800 символов, безопасно по UTF-8
 	if len(result) > 4800 {
 		result = result[:4800]
 		for len(result) > 0 && !utf8.RuneStart(result[len(result)-1]) {

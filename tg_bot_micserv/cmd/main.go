@@ -79,21 +79,36 @@ func main() {
 		kafkaProducer.CheckingAndCreatingTopics(ctx, nameTopic)
 	}
 
-	// Инициализируем Kafka-консьюмер
-	kafkaConsumer := consumer.NewConsumer(cfg)
+	// Инициализируем Kafka-консьюмер 01
+	kafkaConsumer01 := consumer.NewConsumer(cfg, 1)
 	defer func() {
-		if err := kafkaConsumer.Close(); err != nil {
-			slog.Error("Ошибка при закрытии Kafka-консьюмера", "error", err)
+		if err := kafkaConsumer01.Close(); err != nil {
+			slog.Error("Ошибка при закрытии Kafka-консьюмера 01", "error", err)
 		} else {
-			slog.Info("Kafka-консьюмер успешно закрыт")
+			slog.Info("Kafka-консьюмер 01 успешно закрыт")
 		}
 	}()
-	slog.Info("Успешно создали kafka Consumer-а")
-
-	// Запуск консьюмера
+	slog.Info("Успешно создали kafka Consumer-а 01 (text_to_speech → tg_bot)")
+	// Запуск консьюмера 01
 	go func() {
-		if err := kafkaConsumer.Consume(ctx, tgBot); err != nil {
-			log.Fatalf("Ошибка в работе консьюмера: %v", err)
+		if err := kafkaConsumer01.Consume01(ctx, tgBot); err != nil {
+			log.Fatalf("Ошибка в работе консьюмера 01: %v", err)
+		}
+	}()
+
+	kafkaConsumer02 := consumer.NewConsumer(cfg, 2)
+	defer func() {
+		if err := kafkaConsumer02.Close(); err != nil {
+			slog.Error("Ошибка при закрытии Kafka-консьюмера 02", "error", err)
+		} else {
+			slog.Info("Kafka-консьюмер 02 успешно закрыт")
+		}
+	}()
+	slog.Info("Успешно создали kafka Consumer-а 02 (tg_app → tg_bot)")
+	// Запуск консьюмера 02
+	go func() {
+		if err := kafkaConsumer02.Consume02(ctx, tgBot); err != nil {
+			log.Fatalf("Ошибка в работе консьюмера 02: %v", err)
 		}
 	}()
 	defer cancel()

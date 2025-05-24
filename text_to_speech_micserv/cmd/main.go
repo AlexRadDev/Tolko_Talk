@@ -7,8 +7,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"text_to_speech_app/internal/text_to_audio/google_text_to_audio"
+	"text_to_speech_app/internal/text_to_audio/interface_text_to_audio"
 
-	"text_to_speech_app/internal/app_text_to_speech"
 	"text_to_speech_app/internal/kafka/consumer"
 	"text_to_speech_app/internal/kafka/producer"
 	//"text_to_speech_app/internal/server"
@@ -40,20 +41,25 @@ func main() {
 	}
 	slog.Info("Успешно создали объект конфига")
 
+	// Создаём слой бизнес-логики
+	GoogleTextToAudio := google_text_to_audio.NewGoogleTextToAudio(cfg)
+	slog.Info("Успешно создали объект Text-to-Speech сервиса")
+
+	// Объявили интерфейс обработки текста в аудио
+	var аudioSynthesizer interface_text_to_audio.InterfaceTextToAudio
+	// Присвоили интерфейсу реализацию через Google Text to Speech
+	аudioSynthesizer = GoogleTextToAudio
+
 	// Инициализируем Kafka-продюсер
 	kafkaProducer := producer.NewProducer(cfg)
 	slog.Info("Успешно создали Kafka-продюсер")
 
 	// Инициализируем Kafka-консьюмер
-	kafkaConsumer := consumer.NewConsumer(cfg, kafkaProducer)
+	kafkaConsumer := consumer.NewConsumer(cfg, kafkaProducer, аudioSynthesizer)
 	slog.Info("Успешно создали Kafka-консьюмер")
 
-	// Создаём слой бизнес-логики
-	ttsService := app_text_to_speech.NewService(cfg)
-	slog.Info("Успешно создали объект Text-to-Speech сервиса")
-
 	// Создаём HTTP-сервер, внедряя бизнес-логику
-	//srv := server.NewServer(cfg.ServerPort, ttsService)
+	//srv := server.NewServer(cfg.ServerPort, GoogleTextToAudio)
 	//slog.Info("Успешно создали HTTP-сервер")
 
 	// Создаём канал для получения сигналов ОС (для graceful shutdown)
@@ -65,7 +71,7 @@ func main() {
 	// Запускаем Kafka-консьюмер в отдельной горутине
 	go func() {
 		slog.Info("Запуск Kafka-консьюмера")
-		if err := kafkaConsumer.Consume(context.Background(), cfg, ttsService); err != nil {
+		if err := kafkaConsumer.Consume(context.Background(), cfg); err != nil {
 			slog.Error("Ошибка работы Kafka-консьюмера", slog.Any("error", err))
 			os.Exit(1)
 		}

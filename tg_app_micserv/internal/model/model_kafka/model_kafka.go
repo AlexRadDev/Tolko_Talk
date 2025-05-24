@@ -25,3 +25,10 @@ func InitKafkaRequestForTTS(message *KafkaMessageFromTGB, textForAudio map[int64
 		TextForAudio:         textForAudio,
 	}
 }
+
+// KafkaRequestForTGBot представляет структуру данных для сообщения в topic Kafka "tgapp-texttospeech"
+type KafkaRequestForTGBot struct {
+	ChatID               int64  `json:"ChatID"`               // идентификатор чата Telegram
+	AwaitingChannelInput bool   `json:"AwaitingChannelInput"` // флаг, указывающий, ожидается ли ввод имени канала
+	TextForUsers         string `json:"TextForUsers"`         // Текст что постов за это время нет
+}

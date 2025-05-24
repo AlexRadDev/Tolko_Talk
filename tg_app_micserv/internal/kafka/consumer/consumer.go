@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/segmentio/kafka-go"
@@ -29,12 +30,13 @@ func NewConsumer(cfg *config.Config) *Consumer { // serviceParser *service_parse
 
 	// Конфигурация Kafka Reader
 	reader := kafka.NewReader(kafka.ReaderConfig{
-		Brokers:     cfg.KafkaPort,     // Список брокеров
-		Topic:       cfg.KafkaTopic_01, // Топик для чтения
-		GroupID:     "group_01",        // ID группы консьюмеров
-		StartOffset: kafka.FirstOffset, // читать с начала
-		MinBytes:    10e3,              // Минимальный размер батча (10KB)
-		MaxBytes:    10e6,              // Максимальный размер батча (10MB)
+		Brokers:     cfg.KafkaPort,          // Список брокеров
+		Topic:       cfg.KafkaTopic_01,      // Топик для чтения
+		GroupID:     "group_01",             // ID группы консьюмеров
+		StartOffset: kafka.FirstOffset,      // читать с начала
+		MinBytes:    1,                      // Минимальный размер батча (10KB)
+		MaxBytes:    10e6,                   // Максимальный размер батча (10MB)
+		MaxWait:     100 * time.Millisecond, // ждать не более 100мс
 	})
 
 	mylogger.Info(fmt.Sprintf("Kafka Consumer создан для топика %s с брокерами %v", cfg.KafkaTopic_01, cfg.KafkaPort))
@@ -66,24 +68,56 @@ func (c *Consumer) Consume(ctx context.Context, cfg *config.Config, sessionStora
 		var messageFromTGB *model_kafka.KafkaMessageFromTGB // Структура для Unmarshal сообщения от ТГ-бота из Kafka
 		if err := json.Unmarshal(msg.Value, &messageFromTGB); err != nil {
 			myLogger.Error(fmt.Sprintf("Ошибка десериализации сообщения: %v", err))
-			continue // Пропускаем некорректное сообщение
+			continue
+		}
+
+		// Форматируем имя канала
+		channelNameForParserFunc := ""
+		if len(messageFromTGB.NameChanel) > 0 && messageFromTGB.NameChanel[0] == '@' {
+			channelNameForParserFunc = messageFromTGB.NameChanel[1:]
+		}
+		const prefix = "https://t.me/"
+		if len(messageFromTGB.NameChanel) > 0 && strings.HasPrefix(messageFromTGB.NameChanel, prefix) {
+			channelNameForParserFunc = strings.TrimPrefix(messageFromTGB.NameChanel, prefix)
 		}
 
 		timePeriod := time.Duration(messageFromTGB.TimePeriod) * time.Hour
 
 		// Передаём данные в service_parser.PostParser
-		textForAudio, err1 := serviceParser.PostParser(ctx, messageFromTGB.NameChanel, timePeriod)
+		textForAudio, err1 := serviceParser.PostParser(ctx, channelNameForParserFunc, timePeriod)
 		if err1 != nil {
 			myLogger.Error(fmt.Sprintf("Ошибка обработки сообщения в PostParser: %v", err1))
-			// Продолжаем чтение, чтобы не останавливать консьюмер
-			continue
+			continue // Продолжаем чтение, чтобы не останавливать консьюмер
 		}
-		//myLogger.Info(fmt.Sprintf("Мапа textForAudio: %v", textForAudio))
+		myLogger.Info(fmt.Sprintf("Длинна мапы (textForAudio) равна: %v", len(textForAudio)))
+		//myLogger.Info(fmt.Sprintf("Содержимое мапы (textForAudio) равно: %s", textForAudio))
 
 		// Проверяем спарсили ли мы текст
-		if len(textForAudio) == 0 {
+		if len(textForAudio) < 1 || textForAudio == nil {
 			// Новостей за этот период нет
-			// TODO: Реализовать отправку обратно в TG сообщение что постов за этот период нет
+
+			myLogger.Info("Попали в if → len < 0")
+
+			textForUsers := "В телеграм канале: " + channelNameForParserFunc + " постов за указанный период нет."
+
+			request := model_kafka.KafkaRequestForTGBot{
+				ChatID:               messageFromTGB.ChatID,
+				AwaitingChannelInput: messageFromTGB.AwaitingChannelInput,
+				TextForUsers:         textForUsers,
+			}
+
+			jsonData, err01 := json.Marshal(request)
+			if err01 != nil {
+				myLogger.Error(fmt.Sprintf("Ошибка сериализации JSON: %v", err01))
+			}
+
+			myLogger.Info(fmt.Sprintf("Имя топика cfg.KafkaTopic_03 равно: %s", cfg.KafkaTopic_03))
+
+			err01 = producer.SendMessage(ctx, cfg.KafkaTopic_03, jsonData)
+			if err01 != nil {
+				myLogger.Error(fmt.Sprintf("Не удалось отправить сообщение в Kafka(tgapp-tgbot): %v", err01))
+			}
+
 		} else {
 			// отправляем мапу с текстом дольше в kafka в tgapp-texttospeech
 			request := model_kafka.InitKafkaRequestForTTS(messageFromTGB, textForAudio)
@@ -98,7 +132,7 @@ func (c *Consumer) Consume(ctx context.Context, cfg *config.Config, sessionStora
 				myLogger.Error(fmt.Sprintf("Не удалось отправить сообщение в Kafka(tgapp-texttospeech): %v", err01))
 			}
 		}
-		myLogger.Info("Сообщение в Kafka(tgapp-texttospeech) успешно отправлено")
+		myLogger.Info("Сообщение в Kafka успешно отправлено")
 
 		myLogger.Info("Завершение Telegram-клиента")
 		if err02 := tgClient.Close(ctx); err != nil {
