@@ -37,16 +37,18 @@ logs/
 monolith/tools/
 monolith/project-files.txt
 monolith/
+postgres-data/
 
 tg_bot_micserv/tools/scripts_start/
 #text_to_speech_micserv/tools/
 #tg_app_micserv/tools/
 
 # .sh
-start_docker.sh
-start_tg_bot_micserv.sh
-start_tg_app_micserv.sh
-stsrt_text_to_speech_micserv.sh
+00_start_docker_compose_.sh
+start_db_postgres_.sh
+start_tg_app_.sh
+start_tg_bot_.sh
+stsrt_text_to_speech_.sh
 
 # Docker
 .dockerignore

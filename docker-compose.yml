@@ -7,28 +7,28 @@ services:
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     ports:
-      - "9000:8080"
+      - 9000:8080 # слева это снаружи контейнера, справа внутри контейнера
     environment:
       - KAFKA_CLUSTERS_0_NAME=local
       - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka-1:9092,kafka-2:9092,kafka-3:9092
       - KAFKA_CLUSTERS_0_ZOOKEEPER=zookeeper:2181
     networks:
-      - kafka-net
+      - tg-bot-net
 
 
   zookeeper:
     image: zookeeper
     ports:
-      - "2181:2181"
+      - 2181:2181
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
     networks:
-      - kafka-net
+      - tg-bot-net
 
   kafka-1:
     image: wurstmeister/kafka
     ports:
-      - "9095:9094"
+      - 9095:9094
     environment:
       KAFKA_BROKER_ID: 500
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -41,13 +41,13 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
-      - kafka-net
+      - tg-bot-net
 
 
   kafka-2:
     image: wurstmeister/kafka #confluentinc/cp-server:7.7.1
     ports:
-      - "9096:9094"
+      - 9096:9094
     environment:
       KAFKA_BROKER_ID: 501
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -60,13 +60,13 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
-      - kafka-net
+      - tg-bot-net
 
 
   kafka-3:
     image: wurstmeister/kafka #confluentinc/cp-server:7.7.1
     ports:
-      - "9097:9094"
+      - 9097:9094
     environment:
       KAFKA_BROKER_ID: 502
       KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
@@ -79,13 +79,13 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
-    - kafka-net
+    - tg-bot-net # kafka-net
 
 
   tg-bot:
     image: my-tg-bot
     ports:
-      - "5001:5001"
+      - 5001:5001
     environment:
       TG_BOT_TOKEN: 7964767527:AAHWj-x5ItudN-IyFEFwPaErz8yCa9y4Elw
       SERVER_PORT: :5001
@@ -96,13 +96,20 @@ services:
       NAME_TOPIC_02: texttospeech-tgbot
       NAME_TOPIC_03: tgapp-texttospeech
       NAME_TOPIC_04: tgapp-tgbot
+
+      DB_HOST: postgres-db # localhost # postgres-db
+      DB_PORT: 5432
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB_NAME: postgres
+      DB_SSL_MODE: disable
     networks:
-      - kafka-net
+      - tg-bot-net
 
   tg-app:
     image: my-tg-app
     ports:
-      - "5002:5002"
+      - 5002:5002
     environment:
       TELEGRAM_API_ID: 27872122
       TELEGRAM_API_HASH: 6599085d191668bc4190c2cefdbb48f0
@@ -116,12 +123,12 @@ services:
       KAFKA_TOPIC_02: tgapp-texttospeech
       KAFKA_TOPIC_03: tgapp-tgbot
     networks:
-      - kafka-net
+      - tg-bot-net
 
   text-to-speech:
     image: my-text-to-speech
     ports:
-      - "5003:5003"
+      - 5003:5003
     environment:
       SERVER_PORT: :5003
       GOOGLE_CREDENTIALS_FILE: /app/semiotic-mender-459813-c9-fdcf02adec5e.json
@@ -132,9 +139,31 @@ services:
       NAME_TOPIC_02: texttospeech-tgbot
       KAFKA_GROUP_ID: text-to-speech-group
     networks:
-      - kafka-net
+      - tg-bot-net
+
+  postgres-db:
+    image: postgres:15.2
+    # container_name: tg-bot-db-postgres
+    ports:
+      - 5439:5432 # слева это снаружи контейнера, справа внутри контейнера
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      # POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
+    volumes:
+      - ./postgres-data:/var/lib/postgresql/data # \\wsl$\docker-desktop-data\version-pack-data\community\docker\volumes\postgres_data\_data
+      # - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - tg-bot-net
+      # restart: unless-stopped
+      # healthcheck:
+      # test: [ "CMD-SHELL", "pg_isready -U bot_user -d telegram_bot" ] # Команда проверки
+      # interval: 10s # Интервал между проверками
+      # timeout: 5s # Максимальное время ожидания ответа
+      # retries: 5 # Количество попыток перед объявлением "нездоровым"
 
 
 networks:
-  kafka-net:
+  tg-bot-net:
     driver: bridge

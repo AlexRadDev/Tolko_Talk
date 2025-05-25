@@ -14,13 +14,13 @@ import (
 	"tg_bot/tools/logger"
 )
 
-// Consumer представляет Kafka-консьюмер.
+// Consumer представляет Kafka-консьюмер
 type Consumer struct {
 	Reader *kafka.Reader
 }
 
-// NewConsumer создаёт новый экземпляр Kafka-консьюмера.
-func NewConsumer(cfg *config.Config, nomerTopika int) *Consumer { // serviceParser *service_parser.ServiceParser
+// NewConsumer создаёт новый экземпляр Kafka-консьюмера
+func NewConsumer(cfg *config.Config, nomerTopika int) *Consumer {
 
 	var nameTopic string
 	switch nomerTopika {
@@ -45,7 +45,7 @@ func NewConsumer(cfg *config.Config, nomerTopika int) *Consumer { // servicePars
 	}
 }
 
-// Consume читает сообщения из Kafka и передаёт их в service_parser.PostParser.
+// Consume01 читает сообщения из топика (texttospeech-tgbot) Kafka и передаёт их в service_parser.PostParser.
 func (c *Consumer) Consume01(ctx context.Context, tgBot *tgbotapi.BotAPI) error {
 	const lblConsume = "tg_bot_micserv/internal/kafka/consumer/consumer.go/Consume()"
 	myLogger := logger.NewColorLogger(lblConsume)
@@ -53,7 +53,8 @@ func (c *Consumer) Consume01(ctx context.Context, tgBot *tgbotapi.BotAPI) error 
 	myLogger.Info("Подписались на топик Kafaka: \"texttospeech-tgbot\"")
 	for {
 		myLogger.Info("Consume01 слушает топик text_to_speech → tg_bot")
-		// Читаем сообщение из Kafka
+
+		// Читаем(ждем) сообщение из Kafka
 		msg, err := c.Reader.ReadMessage(ctx)
 		if err != nil {
 			myLogger.Error(fmt.Sprintf("Ошибка чтения сообщения из Kafka: %v", err))
@@ -82,7 +83,7 @@ func (c *Consumer) Consume01(ctx context.Context, tgBot *tgbotapi.BotAPI) error 
 	}
 }
 
-// Consume читает сообщения из Kafka и передаёт их в service_parser.PostParser.
+// Consume02 читает сообщения из топика (tgbot-tgapp) Kafka и передаёт их в service_parser.PostParser.
 func (c *Consumer) Consume02(ctx context.Context, tgBot *tgbotapi.BotAPI) error {
 	const lblConsume = "tg_bot_micserv/internal/kafka/consumer/consumer.go/Consume()"
 	myLogger := logger.NewColorLogger(lblConsume)
@@ -90,7 +91,7 @@ func (c *Consumer) Consume02(ctx context.Context, tgBot *tgbotapi.BotAPI) error 
 	myLogger.Info("Подписались на топик Kafaka: \"tgbot-tgapp\"")
 	for {
 		myLogger.Info("Consume02 слушает топик tg_bot → tg_app")
-		// Читаем сообщение из Kafka
+
 		msg, err := c.Reader.ReadMessage(ctx)
 		if err != nil {
 			myLogger.Error(fmt.Sprintf("Ошибка чтения сообщения из Kafka: %v", err))

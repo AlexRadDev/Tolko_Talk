@@ -1,7 +1,3 @@
-// Файл logger.go настраивает логгер на основе библиотеки log/slog с цветным
-// выводом для удобства чтения. Соответствует инфраструктурному слою чистой
-// архитектуры, обеспечивая единообразное логирование.
-
 package logger
 
 import (
@@ -12,7 +8,6 @@ import (
 	"time"
 )
 
-// ANSI-коды цветов
 const (
 	colorReset   = "\033[0m"
 	colorGreen   = "\033[32m"
@@ -34,9 +29,11 @@ func NewColorLogger(lbl string) *slog.Logger {
 		AddSource: true,
 		Level:     slog.LevelInfo,
 	}
-	// Используем стандартный TextHandler с нашей обёрткой
+
 	baseHandler := slog.NewTextHandler(os.Stdout, opts)
+
 	colorHandler := &ColorLevelHandler{handler: baseHandler, lbl: lbl}
+
 	return slog.New(colorHandler)
 }
 
@@ -83,7 +80,6 @@ func (h *ColorLevelHandler) Handle(ctx context.Context, record slog.Record) erro
 	if err != nil {
 		return err
 	}
-
-	// Также передаём оригинальную запись во вложенный handler (комментируем, если не нужно)
+	
 	return nil
 }

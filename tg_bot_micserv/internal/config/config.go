@@ -8,13 +8,20 @@ import (
 
 // Структура Config содержит конфигурационные параметры
 type Config struct {
-	TGBotToken      string   // токен Telegram-бота
-	ServerPort      string   // адрес HTTP-сервера
-	KafkaPort       []string // адрес брокера Kafka
-	NameTopic01     string   // имя топика Kafka для отправки сообщений
-	NameTopic02     string   // имя топика Kafka для принятия сообщений
-	NameTopic04     string   // имя топика Kafka для принятия сообщений
-	KafkaTopicSlise []string // Срез имен топиков Kafka
+	TGBotToken       string   // токен Telegram-бота
+	ServerPort       string   // адрес HTTP-сервера
+	KafkaPort        []string // адрес брокера Kafka
+	NameTopic01      string   // имя топика Kafka для отправки сообщений
+	NameTopic02      string   // имя топика Kafka для принятия сообщений
+	NameTopic03      string   // имя топика Kafka для принятия сообщений
+	NameTopic04      string   // имя топика Kafka для принятия сообщений
+	KafkaTopicSlise  []string // Срез имен топиков Kafka
+	DBHost           string   // хост базы данных внутри сети докер
+	DBPort           string   // порт базы данных внутри контейнера
+	PostgresDBName   string   // имя базы данных
+	PostgresUser     string   // имя юзера БД
+	PostgresPassword string   // пароль к БД
+	DBSSLMOD         string
 }
 
 // Load загружает конфигурацию из переменных окружения
@@ -30,7 +37,7 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("SERVER_PORT не указан")
 	}
 
-	// Получаем адрес брокера Kafka
+	// Получаем адрес брокерров Kafka
 	kafkaPort := make([]string, 0)
 	kafkaPort = append(kafkaPort, os.Getenv("KAFKA_PORT_01"))
 	if kafkaPort[0] == "" {
@@ -81,13 +88,51 @@ func Load() (*Config, error) {
 		}
 	}
 
+	// База данных Postgres
+	DB_Host := os.Getenv("DB_HOST")
+	if DB_Host == "" {
+		return nil, fmt.Errorf("DB_HOST не указан")
+	}
+
+	DB_Port := os.Getenv("DB_PORT")
+	if DB_Port == "" {
+		return nil, fmt.Errorf("DB_PORT не указан")
+	}
+
+	PostgresDB_Name := os.Getenv("POSTGRES_DB_NAME")
+	if PostgresDB_Name == "" {
+		return nil, fmt.Errorf("POSTGRES_DB_NAME не указан")
+	}
+
+	PostgresDB_User := os.Getenv("POSTGRES_USER")
+	if PostgresDB_User == "" {
+		return nil, fmt.Errorf("POSTGRES_USER не указан")
+	}
+
+	PostgresDB_Password := os.Getenv("POSTGRES_PASSWORD")
+	if PostgresDB_Password == "" {
+		return nil, fmt.Errorf("POSTGRES_PASSWORD не указан")
+	}
+
+	DB_SSL_MODE := os.Getenv("DB_SSL_MODE")
+	if DB_SSL_MODE == "" {
+		return nil, fmt.Errorf("DB_SSL_MODE не указан")
+	}
+
 	return &Config{
-		TGBotToken:      token,
-		ServerPort:      serverPort,
-		KafkaPort:       kafkaPort,
-		NameTopic01:     nameTopic01,
-		NameTopic02:     nameTopic02,
-		NameTopic04:     nameTopic04,
-		KafkaTopicSlise: kafkaTopicSlise,
+		TGBotToken:       token,
+		ServerPort:       serverPort,
+		KafkaPort:        kafkaPort,
+		NameTopic01:      nameTopic01,
+		NameTopic02:      nameTopic02,
+		NameTopic03:      nameTopic03,
+		NameTopic04:      nameTopic04,
+		KafkaTopicSlise:  kafkaTopicSlise,
+		DBHost:           DB_Host,
+		DBPort:           DB_Port,
+		PostgresDBName:   PostgresDB_Name,
+		PostgresUser:     PostgresDB_User,
+		PostgresPassword: PostgresDB_Password,
+		DBSSLMOD:         DB_SSL_MODE,
 	}, nil
 }

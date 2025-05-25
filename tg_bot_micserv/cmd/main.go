@@ -1,5 +1,3 @@
-// curl https://api.telegram.org/bot<7964767527:AAHWj-x5ItudN-IyFEFwPaErz8yCa9y4Elw>/getMe
-
 package main
 
 import (
@@ -9,7 +7,6 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
-	"tg_bot/internal/storage/interface_requests_storage"
 	"time"
 
 	"tg_bot/internal/config"
@@ -17,8 +14,9 @@ import (
 	"tg_bot/internal/kafka/producer"
 	"tg_bot/internal/server"
 	"tg_bot/internal/storage/interface_channel_list_storage"
-	"tg_bot/internal/storage/map_channel_list_storage"
+	"tg_bot/internal/storage/interface_requests_storage"
 	"tg_bot/internal/storage/map_requests_storage"
+	"tg_bot/internal/storage/postgres_channel_list_storage"
 	"tg_bot/internal/tg_bot_init"
 	tg_bot_router2 "tg_bot/internal/tg_bot_router"
 	"tg_bot/internal/tg_bot_user_case"
@@ -30,7 +28,7 @@ const (
 )
 
 func main() {
-	// Инициализируем логгер с меткой
+	// Создание логгера с меткой
 	const lblmain = "cmd/main.go/main()"
 	myLoggeg := logger.NewColorLogger(lblmain)
 	slog.SetDefault(myLoggeg)
@@ -42,17 +40,15 @@ func main() {
 	//}
 	//slog.Info("Успешно прочитали файл .env")
 
-	// Загружаем конфигурацию из переменных окружения
+	// Создание конфига
 	cfg, err := config.Load()
 	if err != nil {
 		slog.Error("Ошибка загрузки конфигурации", "error", err)
-		//os.Exit(1)
+		os.Exit(1)
 	}
 	slog.Info("Успешно создали объект кофига")
 
-	slog.Info(fmt.Sprintf("Токен равен: %v", cfg.TGBotToken))
-
-	// Инициализируем Telegram-бот с токеном из конфигурации
+	// Создание Telegram-бота
 	tgBot, err := tg_bot_init.NewBot(cfg.TGBotToken)
 	if err != nil {
 		slog.Error("Ошибка инициализации Telegram-бота", "error", err)
@@ -60,15 +56,16 @@ func main() {
 	}
 	slog.Info(fmt.Sprintf("Бот авторизован как @%s", tgBot.Self.UserName))
 
-	// Создаём in-memory репозиторий для хранения состояния пользователей
-	repo := map_requests_storage.NewRepoUserRequests()
+	// Создание хранилища для состояния запросов пользователей
+	storageReqUsers := map_requests_storage.NewRepoUserRequests()
 	slog.Info("Успешно создали хранилище для состояния пользователей")
+
 	var mapRequests interface_requests_storage.UserRequestRepository
-	mapRequests = repo
+	mapRequests = storageReqUsers
 
 	ctx, cancel := context.WithCancel(context.Background())
 
-	// Инициализируем Kafka-продюсер
+	// Создание Kafka-продюсера
 	kafkaProducer := producer.NewProducer(cfg)
 	defer func() {
 		if err := kafkaProducer.Close(); err != nil {
@@ -84,7 +81,7 @@ func main() {
 		kafkaProducer.CheckingAndCreatingTopics(ctx, nameTopic)
 	}
 
-	// Инициализируем Kafka-консьюмер 01
+	// Создание Kafka-консьюмера 01
 	kafkaConsumer01 := consumer.NewConsumer(cfg, 1)
 	defer func() {
 		if err := kafkaConsumer01.Close(); err != nil {
@@ -100,7 +97,7 @@ func main() {
 			log.Fatalf("Ошибка в работе консьюмера 01: %v", err)
 		}
 	}()
-
+	// Создание Kafka-консьюмера 02
 	kafkaConsumer02 := consumer.NewConsumer(cfg, 2)
 	defer func() {
 		if err := kafkaConsumer02.Close(); err != nil {
@@ -118,24 +115,34 @@ func main() {
 	}()
 	defer cancel()
 
-	// Создаём хранилище для запросов пользователя
-	MapStorage := map_channel_list_storage.NewMapStorage()
-	slog.Info("Успешно создали объект MapStorage")
-	var storageInterface interface_channel_list_storage.StorageInterface
-	storageInterface = MapStorage
+	// Создание подключения к БД
+	postgresStorage, err := postgres_channel_list_storage.NewPostgresStorage(cfg)
+	if err != nil {
+		slog.Error("Ошибка подключения к бд Postgres", "error", err)
+		log.Fatalf("Ошибка подключения к бд Postgres: %v", err)
+	}
+	defer postgresStorage.Close()
 
-	// Создаём слой бизнес-логики, внедряя репозиторий
+	// Создание хранилища Go Map для запросов пользователя
+	//MapStorage := map_channel_list_storage.NewMapStorage()
+	//slog.Info("Успешно создали объект MapStorage")
+
+	// Объявили переменную для Storage interface
+	var storageInterface interface_channel_list_storage.StorageInterface
+	storageInterface = postgresStorage
+
+	// Создание слой бизнес-логики
 	userCase := tg_bot_user_case.NewUseCase(mapRequests, kafkaProducer, storageInterface)
 	slog.Info("Успешно создали объект userCase")
 
-	// Создаём HTTP-роутер, внедряя бот и бизнес-логику
+	// Создание HTTP-роутера
 	router := tg_bot_router2.NewRouter(tgBot, userCase)
 
-	// Настраиваем Long Polling для получения обновлений
+	// Настройка Long Polling для получения обновлений
 	updates := tg_bot_init.SetupLongPolling(tgBot)
 	slog.Info("Запущен режим Long Polling для получения обновлений")
 
-	// Запускаем обработку обновлений в горутине
+	// Запуск обработки обновлений состояния запросов
 	go func() {
 		for update := range updates {
 			router.ProcessUpdate(update)
@@ -151,10 +158,10 @@ func main() {
 
 	mux.HandleFunc("/tgBotPost", router.HandleUpdate)
 
-	// Создаём HTTP-сервер
+	// Создание HTTP-сервера
 	srv := server.NewServer(cfg, mux)
 
-	// Запускаем сервер в отдельной горутине
+	// Запуска сервера
 	go func() {
 		if err := srv.Start(); err != nil {
 			os.Exit(1)
@@ -163,7 +170,6 @@ func main() {
 
 	// Ожидаем сигнал завершения и выполняем graceful shutdown
 	srv.WaitForShutdown()
-
 	// Отменяем контекст для завершения всех горутин
 	cancel()
 	slog.Info("Инициировано завершение всех горутин")
@@ -171,6 +177,6 @@ func main() {
 	// Даём время на завершение операций (например, завершение обработки сообщений)
 	select {
 	case <-time.After(5 * time.Second):
-		slog.Info("Программа завершена после ожидания завершения горутин")
+		slog.Info("Программа завершена")
 	}
 }
