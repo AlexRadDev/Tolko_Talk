@@ -14,7 +14,7 @@ import (
 	"tg_bot/tools/logger"
 )
 
-// Server представляет HTTP-сервер с поддержкой graceful shutdown
+// Server представляет HTTP-сервер
 type Server struct {
 	srv      *http.Server
 	myLogger *slog.Logger
@@ -56,7 +56,7 @@ func (s *Server) Shutdown(ctx context.Context) error {
 		s.myLogger.Error(fmt.Sprintf("Ошибка при завершении работы сервера: %v", err))
 		return err
 	}
-	
+
 	s.myLogger.Info("Сервер успешно завершил работу")
 	return nil
 }

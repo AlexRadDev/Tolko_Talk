@@ -1,6 +1,3 @@
-// Файл tg_bot_router.go реализует HTTP-роутер для обработки входящих запросов от bota.
-// Отвечает за десериализацию JSON-данных, вызов бизнес-логики и отправку ответов.
-
 package tg_bot_router
 
 import (
@@ -35,14 +32,12 @@ func (r *Router) HandleUpdate(w http.ResponseWriter, req *http.Request) {
 	// Создаём структуру для хранения обновления
 	var update tgbotapi.Update
 
-	// Декодируем JSON из тела запроса
 	if err := json.NewDecoder(req.Body).Decode(&update); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
 	}
 	myLogger.Info("Успешно декодировали JSON из тела запроса")
 
-	// Проверяем, содержит ли обновление сообщение
 	if update.Message != nil {
 		r.tgBotUserCase.HandleMessage(ctx, r.tgBot, update.Message.Chat.ID, update.Message.Text)
 		myLogger.Info("Успешно передали запрос в бизнес-логику")
@@ -65,18 +60,15 @@ func (r *Router) ProcessUpdate(update tgbotapi.Update) {
 		return
 	}
 
-	//region Для реализации нажатий на InlineKeyboard кнопки
-	// Обработка нажатий на кнопки (CallbackQuery)
+	// Обработка нажатий на кнопки CallbackQuery
 	if update.CallbackQuery != nil {
 		callback := tgbotapi.NewCallback(update.CallbackQuery.ID, "")
 		if _, err := r.tgBot.Request(callback); err != nil {
 			myLogger.Error("Ошибка при ответе на callback", "error", err)
 		}
-
-		// Обрабатываем данные callback
+		
 		r.tgBotUserCase.HandleCallback(r.tgBot, update.CallbackQuery.Message.Chat.ID, update.CallbackQuery.Data)
 		myLogger.Info("Ksandr Успешно обработали callback")
 		return
 	}
-	//endregion
 }

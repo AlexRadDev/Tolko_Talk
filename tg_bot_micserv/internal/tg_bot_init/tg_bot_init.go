@@ -1,5 +1,3 @@
-// Файл tg_bot_init.go отвечает за инициализацию Telegram-бота с использованием предоставленного токена.
-
 package tg_bot_init
 
 import (

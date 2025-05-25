@@ -13,16 +13,16 @@ import (
 	"tg_bot/tools/logger"
 )
 
-// Структура Producer содержит Kafka-продюсер.
+// Producer структура Kafka-продюсера
 type Producer struct {
 	Writer *kafka.Writer // Объект для записи сообщений в Kafka.
 }
 
-// NewProducer создаёт новый Kafka-продюсер.
+// NewProducer создаёт новый Kafka-продюсер
 func NewProducer(cfg *config.Config) *Producer {
 	writer := &kafka.Writer{
 		Addr:       kafka.TCP(cfg.KafkaPort[0]), // Указываем адреса брокеров Kafka
-		Topic:      cfg.NameTopic01,             // Указываем топик для отправки сообщений
+		Topic:      cfg.NameTopic01,             // Указываем топик для отправки сообщений по умолчанию
 		Balancer:   &kafka.LeastBytes{},         // Используем балансировку по ключу для равномерного распределения сообщений
 		Async:      true,                        // Включаем асинхронную отправку сообщений
 		BatchBytes: 5 * 1024 * 1024,             // 5 MB
@@ -36,7 +36,7 @@ func (p *Producer) SendMessage(ctx context.Context, nameTopic string, data []byt
 	const lblSendMessage = "tg_bot_micserv/internal/kafka/producer.go/SendMessage()"
 	myLogger := logger.NewColorLogger(lblSendMessage)
 
-	// проверяем, существует ли топик в кластере Kafka и создаем если нет
+	// Проверяем, существует ли топик в кластере Kafka и создаем если нет
 	err := p.CheckingAndCreatingTopics(ctx, nameTopic)
 	if err != nil {
 		return err

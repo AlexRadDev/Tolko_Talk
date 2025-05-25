@@ -46,7 +46,7 @@ func (p *PostgresStorage) Close() error {
 }
 
 // AddChannel добавляет канал для чата
-func (p *PostgresStorage) AddChannel(chatID int64, nameChannel, linkChannel string) {
+func (p *PostgresStorage) AddChannel(chatID int64, nameChannel, linkChannel string) error {
 	const lblConsume = "tg_bot_micserv/internal/storage/postgres_channel_list_storage/AddChannel()"
 	myLogger := logger.NewColorLogger(lblConsume)
 
@@ -62,10 +62,11 @@ func (p *PostgresStorage) AddChannel(chatID int64, nameChannel, linkChannel stri
 	_, err := p.db.Exec(query, chatID, nameChannel, linkChannel)
 	if err != nil {
 		myLogger.Error(fmt.Sprintf("Ошибка сохранения канала: %s", err))
-		return
+		return err
 	}
 
 	myLogger.Info(fmt.Sprintf("Канал успешно сохранен. Имя канала: %s, Номер чата: %v", nameChannel, chatID))
+	return nil
 }
 
 // GetChannels получает все каналы для чата
@@ -154,7 +155,7 @@ func (p *PostgresStorage) runMigrations() error {
 		sql     string
 	}{
 		{
-			version: "001_create_channels_table",
+			version: "001_create_channels_table.up.sql",
 			sql: `
                 CREATE TABLE IF NOT EXISTS channels (
                     id SERIAL PRIMARY KEY,

@@ -1,7 +1,3 @@
-// repo_user_requests.go реализует репозиторий для хранения состояния запросов пользователей.
-// Использует map для хранения данных в памяти.
-// Реализация соответствует интерфейсу UserRequestRepository, обеспечивая независимость слоя бизнес-логики от хранения.
-
 package map_requests_storage
 
 import (
@@ -9,9 +5,9 @@ import (
 	"tg_bot/internal/model/bot_request"
 )
 
-// Структура RepoUserRequests реализует in-memory репозиторий
+// RepoUserRequests хранилище состояния запросов пользователя
 type RepoUserRequests struct {
-	userRequests map[int64]*bot_request.TgBotRequest // карта для хранения запросов пользователей
+	userRequests map[int64]*bot_request.TgBotRequest
 	mutex        sync.RWMutex
 }
 
@@ -26,20 +22,18 @@ func NewRepoUserRequests() *RepoUserRequests {
 // GetRequest возвращает запрос пользователя по chatID или создаёт новый
 func (r *RepoUserRequests) GetRequest(chatID int64) *bot_request.TgBotRequest {
 	r.mutex.RLock()
-	request, exists := r.userRequests[chatID] // Проверяем, существует ли запрос для данного chatID
+	request, exists := r.userRequests[chatID]
 	r.mutex.RUnlock()
 
-	// Если запрос существует, возвращаем его
 	if exists {
 		return request
 	}
 
-	request = &bot_request.TgBotRequest{} // Создаём новый запрос
+	request = &bot_request.TgBotRequest{}
 	r.mutex.Lock()
-	r.userRequests[chatID] = request // Сохраняем новый запрос в карту
+	r.userRequests[chatID] = request
 	r.mutex.Unlock()
 
-	// Возвращаем новый запрос
 	return request
 }
 

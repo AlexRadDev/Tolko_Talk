@@ -1,6 +1,3 @@
-// Файл bot_usecase.go обрабатывает входящие сообщения, взаимодействует с репозиторием.
-// Отправляет ответы через Telegram Bot API.
-
 package tg_bot_user_case
 
 import (
@@ -43,14 +40,14 @@ func init() {
 	MainKeyboard.Selective = false     // Отключаем выборочную видимость клавиатуры
 }
 
-// Структура UseCase содержит бизнес-логику бота
+// Структура UseCase содержит логику работы ТГ бота
 type UseCase struct {
-	repo          interface_requests_storage.UserRequestRepository // Интерфейс репозитория для работы с данными
+	repo          interface_requests_storage.UserRequestRepository
 	kafkaProducer *producer.Producer
 	storage       interface_channel_list_storage.StorageInterface
 }
 
-// NewUseCase создаёт новый экземпляр UseCase
+// NewUseCase создаёт новый экземпляр структуры работы бота
 func NewUseCase(repo interface_requests_storage.UserRequestRepository, kafkaProducer *producer.Producer, storage interface_channel_list_storage.StorageInterface) *UseCase {
 	return &UseCase{
 		repo:          repo,
@@ -76,7 +73,9 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 			return err
 		}
 		myLogger.Info("Отображена главная клавиатура", "chatID", chatID)
-		uc.repo.SaveRequest(chatID, request) // Сохраняем обновлённый запрос
+
+		// Сохраняем обновлённый запрос
+		uc.repo.SaveRequest(chatID, request)
 		return nil
 	}
 
@@ -111,7 +110,7 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 			return nil
 		}
 
-		// Создаём инлайн-клавиатуру со списком каналов
+		// Создаём инлайн-клавиатуру (клавиатуру в окне сообщений) со списком каналов
 		var buttons [][]tgbotapi.InlineKeyboardButton
 		for name, link := range channels {
 			button := tgbotapi.NewInlineKeyboardButtonData(name, fmt.Sprintf("channel_%s|%s", name, link))
@@ -126,7 +125,7 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 		msg := tgbotapi.NewMessage(chatID, "Выберите канал из списка:")
 		msg.ReplyMarkup = inlineKeyboard
 		if _, err := bot.Send(msg); err != nil {
-			myLogger.Error("Ошибка отправки сообщения с инлайн-клавиатурой", "error", err)
+			myLogger.Error(fmt.Sprintf("Ошибка отправки сообщения с инлайн-клавиатурой: %s", err))
 			return err
 		}
 		return nil
@@ -137,7 +136,7 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 			msg := tgbotapi.NewMessage(chatID, "У вас нет добавленных каналов. Сначала добавьте канал в избранное.")
 			msg.ReplyMarkup = MainKeyboard
 			if _, err := bot.Send(msg); err != nil {
-				myLogger.Error("Ошибка отправки сообщения", "error", err)
+				myLogger.Error(fmt.Sprintf("Ошибка отправки сообщения: %s", err))
 				return err
 			}
 			return nil
@@ -149,7 +148,7 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 			button := tgbotapi.NewInlineKeyboardButtonData(name, fmt.Sprintf("delete_channel_%s", name))
 			buttons = append(buttons, tgbotapi.NewInlineKeyboardRow(button))
 		}
-		// Добавляем кнопку "Назад"
+
 		buttons = append(buttons, tgbotapi.NewInlineKeyboardRow(
 			tgbotapi.NewInlineKeyboardButtonData("Назад", "back_to_main"),
 		))
@@ -158,7 +157,7 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 		msg := tgbotapi.NewMessage(chatID, "Выберите канал для удаления:")
 		msg.ReplyMarkup = inlineKeyboard
 		if _, err := bot.Send(msg); err != nil {
-			myLogger.Error("Ошибка отправки сообщения с инлайн-клавиатурой", "error", err)
+			myLogger.Error(fmt.Sprintf("Ошибка отправки сообщения с инлайн-клавиатурой: %s", err))
 			return err
 		}
 		return nil
@@ -278,10 +277,9 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 			request.TimePeriod = 1
 		}
 		if request.SpeakingRate == 0 {
-			request.SpeakingRate = 1.0
+			request.SpeakingRate = 1.2
 		}
 
-		// Сериализация запроса в JSON
 		jsonData, err := json.Marshal(request)
 		if err != nil {
 			myLogger.Error("Ошибка сериализации JSON", "error", err)
@@ -317,18 +315,23 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 				if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
 					msg := tgbotapi.NewMessage(chatID, "Ошибка: Введите имя и ссылку в формате: Название|Ссылка")
 					if _, err := bot.Send(msg); err != nil {
-						myLogger.Error("Ошибка отправки сообщения", "error", err)
+						myLogger.Error(fmt.Sprintf("Ошибка отправки сообщения: %s", err))
 						return err
 					}
 					return nil
 				}
 				nameChannel, linkChannel := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
-				uc.storage.AddChannel(chatID, nameChannel, linkChannel)
+				err := uc.storage.AddChannel(chatID, nameChannel, linkChannel)
 				request.AwaitingChannelInput = false
-				msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Канал сохранён в избранное: %s\nВыберите действие:", nameChannel))
+				var msg tgbotapi.MessageConfig
+				if err != nil {
+					msg = tgbotapi.NewMessage(chatID, fmt.Sprintf("Ошибка на сервере, канал %s не хохранен\nВыберите действие:", nameChannel))
+				} else {
+					msg = tgbotapi.NewMessage(chatID, fmt.Sprintf("Канал сохранён в избранное: %s\nВыберите действие:", nameChannel))
+				}
 				msg.ReplyMarkup = MainKeyboard
 				if _, err := bot.Send(msg); err != nil {
-					myLogger.Error("Ошибка отправки сообщения", "error", err)
+					myLogger.Error(fmt.Sprintf("Ошибка отправки сообщения: %s", err))
 					return err
 				}
 				uc.repo.SaveRequest(chatID, request)
@@ -337,7 +340,7 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 
 			msg := tgbotapi.NewMessage(chatID, "Ошибка: Введите имя и ссылку в формате: Название|Ссылка")
 			if _, err := bot.Send(msg); err != nil {
-				myLogger.Error("Ошибка отправки сообщения", "error", err)
+				myLogger.Error(fmt.Sprintf("Ошибка отправки сообщения: %s", err))
 				return err
 			}
 			return nil
@@ -346,7 +349,7 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 		msg := tgbotapi.NewMessage(chatID, "Пожалуйста, выберите действие:")
 		msg.ReplyMarkup = MainKeyboard
 		if _, err := bot.Send(msg); err != nil {
-			myLogger.Error("Ошибка отправки сообщения", "error", err)
+			myLogger.Error(fmt.Sprintf("Ошибка отправки сообщения: %s", err))
 			return err
 		}
 		uc.repo.SaveRequest(chatID, request)
@@ -365,21 +368,21 @@ func (uc *UseCase) HandleCallback(bot *tgbotapi.BotAPI, chatID int64, callbackDa
 
 	switch callbackData {
 	case "back_to_main":
-		// Возвращение в главное меню
 		msg := tgbotapi.NewMessage(chatID, "Вернулись в главное меню.\nВыберите действие:")
 		msg.ReplyMarkup = MainKeyboard
 		if _, err := bot.Send(msg); err != nil {
-			myLogger.Error("Ошибка отправки сообщения", "error", err)
+			myLogger.Error(fmt.Sprintf("Ошибка отправки сообщения: %s", err))
 			return err
 		}
 
 	default:
 		if strings.HasPrefix(callbackData, "channel_") {
+
 			// Извлекаем имя и ссылку канала из callbackData
 			parts := strings.SplitN(callbackData[8:], "|", 2)
 			if len(parts) != 2 {
-				myLogger.Error("Неверный формат callbackData", "callbackData", callbackData)
-				msg := tgbotapi.NewMessage(chatID, "Ошибка: Неверный формат данных канала.")
+				myLogger.Error(fmt.Sprintf("Неверный формат callbackData: %s", callbackData))
+				msg := tgbotapi.NewMessage(chatID, "Ошибка: Неверный формат введенных данных о канале.\nПожалуйста проверьте ввод.")
 				if _, err := bot.Send(msg); err != nil {
 					return err
 				}
@@ -390,7 +393,7 @@ func (uc *UseCase) HandleCallback(bot *tgbotapi.BotAPI, chatID int64, callbackDa
 			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Канал выбран: %s\nВыберите действие:", nameChannel))
 			msg.ReplyMarkup = MainKeyboard
 			if _, err := bot.Send(msg); err != nil {
-				myLogger.Error("Ошибка отправки сообщения", "error", err)
+				myLogger.Error(fmt.Sprintf("Ошибка отправки сообщения: %s", err))
 				return err
 			}
 		} else if strings.HasPrefix(callbackData, "delete_channel_") {
@@ -399,14 +402,16 @@ func (uc *UseCase) HandleCallback(bot *tgbotapi.BotAPI, chatID int64, callbackDa
 			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Канал %s удалён из избранного.\nВыберите действие:", nameChannel))
 			msg.ReplyMarkup = MainKeyboard
 			if _, err := bot.Send(msg); err != nil {
-				myLogger.Error("Ошибка отправки сообщения", "error", err)
+				myLogger.Error(fmt.Sprintf("Ошибка отправки сообщения: %s", err))
 				return err
 			}
 		} else {
 			// Для неизвестных callback отправляем текст callback'а
 			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Получен неизвестный callback: %s", callbackData))
+			myLogger.Warn(fmt.Sprintf("Получен неизвестный callback: %s", callbackData))
+
 			if _, err := bot.Send(msg); err != nil {
-				myLogger.Error("Ошибка отправки сообщения", "error", err)
+				myLogger.Error(fmt.Sprintf("Ошибка отправки сообщения: %s", err))
 				return err
 			}
 		}

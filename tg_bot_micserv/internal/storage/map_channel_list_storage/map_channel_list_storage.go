@@ -4,6 +4,7 @@ import (
 	"sync"
 )
 
+// MapStorage хранилище в map
 type MapStorage struct {
 	MapStorage map[int64]map[string]string
 	Mutex      sync.RWMutex
@@ -15,8 +16,8 @@ func NewMapStorage() *MapStorage {
 	return &MapStorage{myMapStorage, sync.RWMutex{}}
 }
 
-// Метод для добавления канала пользователю
-func (s *MapStorage) AddChannel(chatID int64, nameChannel, linkChannel string) {
+// AddChannel добавление канала в избранное
+func (s *MapStorage) AddChannel(chatID int64, nameChannel, linkChannel string) error {
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
 
@@ -24,9 +25,11 @@ func (s *MapStorage) AddChannel(chatID int64, nameChannel, linkChannel string) {
 		s.MapStorage[chatID] = make(map[string]string)
 	}
 	s.MapStorage[chatID][nameChannel] = linkChannel
+
+	return nil
 }
 
-// Метод для получения списка каналов пользователя
+// GetChannels получения списка избранных каналов
 func (s *MapStorage) GetChannels(chatID int64) map[string]string {
 	s.Mutex.RLock()
 	defer s.Mutex.RUnlock()
@@ -38,6 +41,7 @@ func (s *MapStorage) GetChannels(chatID int64) map[string]string {
 	return channels
 }
 
+// DeleteChannels удаление канала из списка
 func (s *MapStorage) DeleteChannels(chatID int64, nameChannel string) {
 	s.Mutex.Lock()
 	defer s.Mutex.Unlock()
