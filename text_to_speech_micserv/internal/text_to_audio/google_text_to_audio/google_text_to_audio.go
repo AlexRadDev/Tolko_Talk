@@ -1,6 +1,3 @@
-// Файл app_text_to_speech.go реализует бизнес-логику микросервиса Text-to-Speech.
-// Содержит слой UseCase, который взаимодействует с Google Text-to-Speech API для синтеза речи.
-
 package google_text_to_audio
 
 import (
@@ -8,21 +5,24 @@ import (
 	"context"
 	"encoding/base64"
 	"io"
+	"io/ioutil"
 	"log/slog"
 	"sort"
+	//"time"
 
 	"github.com/hajimehoshi/go-mp3"
 	"google.golang.org/api/option"
 	texttospeech "google.golang.org/api/texttospeech/v1"
 
 	"text_to_speech_app/internal/config"
+	//"text_to_speech_app/internal/metrics/metrics_prometheus"
 	"text_to_speech_app/internal/model/model_kafka"
 	"text_to_speech_app/tools/logger"
 )
 
 // GoogleTextToAudio представляет сервис Text-to-Speech
 type GoogleTextToAudio struct {
-	credentialsFile string // Путь к файлу учетных данных Google Cloud
+	credentialsFile string // Путь к файлу учетных данных Google Text to Speech
 }
 
 // NewGoogleTextToAudio создаёт новый экземпляр сервиса Text-to-Speech
@@ -33,8 +33,8 @@ func NewGoogleTextToAudio(cfg *config.Config) *GoogleTextToAudio {
 }
 
 // Synthesize выполняет синтез речи на основе запроса
-func (s *GoogleTextToAudio) Synthesize(ctx context.Context, messageFromTGAPP *model_kafka.KafkaMessageFromTGAPP) (*model_kafka.KafkaRequestForTGAPP, error) {
-	const lblSynthesize = "text_to_speech_micserv/internal/app_text_to_speech/app_text_to_speech.go → Synthesize()"
+func (s *GoogleTextToAudio) Synthesize(ctx context.Context, messageFromTGAPP *model_kafka.KafkaMessageFromTGAPP) (*model_kafka.KafkaRequestForTGBot, error) {
+	const lblSynthesize = "text_to_speech_micserv/internal/app_text_to_speech/Synthesize()"
 	myLogger := logger.NewColorLogger(lblSynthesize)
 
 	ctx = context.Background()
@@ -85,6 +85,10 @@ func (s *GoogleTextToAudio) Synthesize(ctx context.Context, messageFromTGAPP *mo
 			AudioConfig: audioConfig,
 		}
 
+		//uc.MetricsTime.TimeRequest = time.Now()
+		//uc.MetricsTime.RequestID++
+		//uc.MetricsTime.ChatID = chatID
+
 		// Выполняем запрос синтеза речи
 		resp, err := client.Text.Synthesize(ttsReq).Do()
 		if err != nil {
@@ -127,19 +131,27 @@ func (s *GoogleTextToAudio) Synthesize(ctx context.Context, messageFromTGAPP *mo
 	}
 	myLogger.Info("Успешно объединили все аудиофайлы")
 
-	var RequestForTGAPP *model_kafka.KafkaRequestForTGAPP
+	var RequestForTGAPP *model_kafka.KafkaRequestForTGBot
 
 	audioDataRequest := combinedAudio.Bytes()
 
-	//region Сохранение аудиодорожки в файл
-	//err = ioutil.WriteFile("audio.mp3", audioDataRequest, 0644)
+	//region сохранение аудио в аудио файл
+	//err = s.SaveAudioToFile(audioDataRequest)
 	//if err != nil {
-	//	myLogger.Error(fmt.Sprintf("Не удалось сохранить аудио", err))
+	//	myLogger.Error(fmt.Sprintf("Не удалось сохранить аудио в файл", err))
 	//}
 	//myLogger.Info("Аудио файл сохранен!")
 	//endregion
 
-	RequestForTGAPP = model_kafka.InitKafkaRequestForTTS(messageFromTGAPP.ChatID, audioDataRequest)
+	RequestForTGAPP = model_kafka.InitKafkaRequestForTTS(messageFromTGAPP, audioDataRequest)
 
 	return RequestForTGAPP, nil
+}
+
+func (s *GoogleTextToAudio) SaveAudioToFile(audioDataRequest []byte) error {
+	err := ioutil.WriteFile("audio.mp3", audioDataRequest, 0644)
+	if err != nil {
+		return err
+	}
+	return nil
 }

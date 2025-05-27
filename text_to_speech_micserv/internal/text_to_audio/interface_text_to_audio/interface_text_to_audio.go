@@ -8,5 +8,5 @@ import (
 
 // InterfaceTextToAudio интерфейс для превращения текста в аудио
 type InterfaceTextToAudio interface {
-	Synthesize(ctx context.Context, messageFromTGAPP *model_kafka.KafkaMessageFromTGAPP) (*model_kafka.KafkaRequestForTGAPP, error)
+	Synthesize(ctx context.Context, messageFromTGAPP *model_kafka.KafkaMessageFromTGAPP) (*model_kafka.KafkaRequestForTGBot, error)
 }

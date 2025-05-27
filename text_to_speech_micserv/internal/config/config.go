@@ -8,12 +8,12 @@ import (
 
 // Структура Config содержит конфигурационные параметры
 type Config struct {
-	ServerPort            string   // Порт HTTP-сервера
-	GoogleCredentialsFile string   // Путь к файлу учетных данных Google Cloud
-	KafkaPort             []string // адреса брокера Kafka
-	TopicProdus           string   // Имя топика Kafka для отправки сообщений
-	TopicConsum           string   // Имя топика Kafka для принятия сообщений
-	KafkaGroupID          string   // Идентификатор группы консьюмеров Kafka
+	ServerPort            string
+	GoogleCredentialsFile string
+	KafkaPort             []string
+	TopicProdus           string
+	TopicConsum           string
+	KafkaGroupID          string
 }
 
 // Load загружает конфигурацию из переменных окружения
@@ -43,20 +43,17 @@ func Load() (*Config, error) {
 	if kafkaPort[2] == "" {
 		return nil, errors.New("KAFKA_PORT_03 не указан")
 	}
-	//myLogger.Info("Успешно прочитали все KAFKA_PORT")
 
 	// Получаем Имя топика продюсера
 	topicConsum := os.Getenv("NAME_TOPIC_01")
 	if topicConsum == "" {
 		return nil, errors.New("NAME_TOPIC_01 не указан")
 	}
-	//myLogger.Info("Успешно прочитали KAFKA_TOPIC_01")
 
 	topicProdus := os.Getenv("NAME_TOPIC_02")
 	if topicProdus == "" {
 		return nil, errors.New("NAME_TOPIC_02 не указан")
 	}
-	//myLogger.Info("Успешно прочитали KAFKA_TOPIC_01")
 
 	// Получаем идентификатор группы консьюмеров Kafka
 	kafkaGroupID := os.Getenv("KAFKA_GROUP_ID")

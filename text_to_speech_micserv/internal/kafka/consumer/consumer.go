@@ -1,32 +1,34 @@
-// Файл consumer.go реализует Kafka-консьюмер для получения запросов.
-// Отвечает за чтение сообщений из Kafka, их обработку через бизнес-логику и отправку результатов через продюсер.
-
 package consumer
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"text_to_speech_app/internal/text_to_audio/interface_text_to_audio"
+	"strconv"
 	"time"
 
 	"github.com/segmentio/kafka-go"
 
 	"text_to_speech_app/internal/config"
 	"text_to_speech_app/internal/kafka/producer"
+	"text_to_speech_app/internal/metrics/metrics_prometheus"
 	"text_to_speech_app/internal/model/model_kafka"
+	"text_to_speech_app/internal/text_to_audio/interface_text_to_audio"
 	"text_to_speech_app/tools/logger"
 )
 
 // Consumer представляет Kafka-консьюмер.
 type Consumer struct {
-	Reader      *kafka.Reader
-	Producer    *producer.Producer
-	TextToAudio interface_text_to_audio.InterfaceTextToAudio
+	Reader            *kafka.Reader
+	Producer          *producer.Producer
+	TextToAudio       interface_text_to_audio.InterfaceTextToAudio
+	MetricsPrometheus *metrics_prometheus.TGBotMetricsPrometheus
 }
 
 // NewConsumer создаёт новый экземпляр Kafka-консьюмера.
-func NewConsumer(cfg *config.Config, producerKafka *producer.Producer, interfaceTextToAudio interface_text_to_audio.InterfaceTextToAudio) *Consumer { // serviceParser *service_parser.ServiceParser
+func NewConsumer(cfg *config.Config, producerKafka *producer.Producer,
+	interfaceTextToAudio interface_text_to_audio.InterfaceTextToAudio,
+	metricsPrometheus *metrics_prometheus.TGBotMetricsPrometheus) *Consumer { // serviceParser *service_parser.ServiceParser
 
 	// Конфигурация Kafka Reader
 	reader := kafka.NewReader(kafka.ReaderConfig{
@@ -40,17 +42,16 @@ func NewConsumer(cfg *config.Config, producerKafka *producer.Producer, interface
 	})
 
 	return &Consumer{
-		Reader:      reader,
-		Producer:    producerKafka,
-		TextToAudio: interfaceTextToAudio,
+		Reader:            reader,
+		Producer:          producerKafka,
+		TextToAudio:       interfaceTextToAudio,
+		MetricsPrometheus: metricsPrometheus,
 	}
 }
 
 // Consume читает сообщения из Kafka и передаёт их в service_parser.PostParser.
-func (c *Consumer) Consume(ctx context.Context, cfg *config.Config) error { //sessionStorage *tg_session_storage.FileSessionStorage
-	// appTextToTpeech *app_text_to_speech.Service
-
-	const lblConsume = "text_to_speech_micserv/internal/kafka/consumer/consumer.go/Consume()"
+func (c *Consumer) Consume(ctx context.Context, cfg *config.Config) error {
+	const lblConsume = "text_to_speech_micserv/internal/kafka/consumer/Consume()"
 	myLogger := logger.NewColorLogger(lblConsume)
 	myLogger.Info("Подписались на топик Kafaka: \"tgapp-texttospeech\"")
 
@@ -63,14 +64,18 @@ func (c *Consumer) Consume(ctx context.Context, cfg *config.Config) error { //se
 		}
 		myLogger.Info(fmt.Sprintf("Получено сообщение из топика %s: %s", msg.Topic, string(msg.Value)))
 
-		var messageFromTGAPP *model_kafka.KafkaMessageFromTGAPP // Структура для Unmarshal сообщения от ТГ-бота из Kafka
+		var messageFromTGAPP *model_kafka.KafkaMessageFromTGAPP
 
 		if err := json.Unmarshal(msg.Value, &messageFromTGAPP); err != nil {
 			myLogger.Error(fmt.Sprintf("Ошибка десериализации сообщения: %v", err))
-			continue // Пропускаем некорректное сообщение
+			continue
 		}
 
-		// Передаём данные в TextToTpeech Synthesize для синтэза аудио
+		// Фиксируем значения для метрик в Prometheus
+		c.MetricsPrometheus.RequestID = messageFromTGAPP.RequestID
+		c.MetricsPrometheus.ChatID = messageFromTGAPP.ChatID
+		c.MetricsPrometheus.TimeStartRequest = time.Now()
+
 		responseForTGAPP, err1 := c.TextToAudio.Synthesize(ctx, messageFromTGAPP)
 		if err1 != nil {
 			myLogger.Error(fmt.Sprintf("Ошибка обработки сообщения в PostParser: %v", err1))
@@ -86,6 +91,9 @@ func (c *Consumer) Consume(ctx context.Context, cfg *config.Config) error { //se
 		if err03 != nil {
 			myLogger.Error(fmt.Sprintf("Не удалось отправить сообщение в Kafka(tgapp-texttospeech): %v", err03))
 		}
+
+		strChatID := strconv.FormatInt(c.MetricsPrometheus.ChatID, 10)
+		c.MetricsPrometheus.ObserveDuration(c.MetricsPrometheus.RequestID, strChatID, c.MetricsPrometheus.TimeRequestCalculation())
 		myLogger.Info("Сообщение в Kafka(texttospeech-tgapp) успешно отправлено")
 	}
 
@@ -94,7 +102,7 @@ func (c *Consumer) Consume(ctx context.Context, cfg *config.Config) error { //se
 
 // Close закрывает Kafka Reader.
 func (c *Consumer) Close() error {
-	const lblClose = "text_to_speech_micserv/internal/kafka/consumer/consumer.go/Close()"
+	const lblClose = "text_to_speech_micserv/internal/kafka/consumer/Close()"
 	mylogger := logger.NewColorLogger(lblClose)
 
 	if err := c.Reader.Close(); err != nil {

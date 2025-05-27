@@ -1,6 +1,6 @@
 // Хранение сеансов
 
-package tg_session_storage
+package tg_app_session_storage
 
 import "github.com/gotd/td/telegram"
 

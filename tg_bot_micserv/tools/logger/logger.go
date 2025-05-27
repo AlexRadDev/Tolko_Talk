@@ -15,7 +15,17 @@ const (
 	colorRed     = "\033[31m"
 	colorBlue    = "\033[36m"
 	colorMagenta = "\033[35m"
+	colorOrange  = "\033[38;5;208m" // Для #ff9d1e
+	colorLime    = "\033[38;5;190m" // Для #c8ff32
 )
+
+// LevelMetrics — новый уровень логирования
+const LevelMetrics slog.Level = 12
+
+// Logger — обёртка над slog.Logger
+type Logger struct {
+	*slog.Logger
+}
 
 // ColorLevelHandler — обёртка над slog.Handler, которая раскрашивает уровень логирования
 type ColorLevelHandler struct {
@@ -23,18 +33,18 @@ type ColorLevelHandler struct {
 	lbl     string // Добавляем поле для префикса lbl
 }
 
-// NewColorLogger создаёт slog.Logger с цветной обёрткой
-func NewColorLogger(lbl string) *slog.Logger {
+// NewColorLogger создаёт Logger с цветной обёрткой
+func NewColorLogger(lbl string) *Logger {
 	opts := &slog.HandlerOptions{
 		AddSource: true,
-		Level:     slog.LevelInfo,
+		Level:     slog.LevelDebug, // Включает все уровни, включая Metrics
 	}
 
 	baseHandler := slog.NewTextHandler(os.Stdout, opts)
 
 	colorHandler := &ColorLevelHandler{handler: baseHandler, lbl: lbl}
 
-	return slog.New(colorHandler)
+	return &Logger{slog.New(colorHandler)}
 }
 
 // Enabled просто передаёт вызов во внутренний handler
@@ -51,19 +61,28 @@ func (h *ColorLevelHandler) WithGroup(name string) slog.Handler {
 }
 
 func (h *ColorLevelHandler) Handle(ctx context.Context, record slog.Record) error {
-	level := record.Level.String()
+	var level string
 	var coloredLevel string
 
+	// Кастомное строковое представление для уровней
 	switch record.Level {
+	case slog.LevelDebug:
+		level = "DEBUG"
+		coloredLevel = colorBlue + level + colorReset
 	case slog.LevelInfo:
+		level = "INFO"
 		coloredLevel = colorGreen + level + colorReset
 	case slog.LevelWarn:
+		level = "WARN"
 		coloredLevel = colorYellow + level + colorReset
 	case slog.LevelError:
+		level = "ERROR"
 		coloredLevel = colorRed + level + colorReset
-	case slog.LevelDebug:
-		coloredLevel = colorBlue + level + colorReset
+	case LevelMetrics:
+		level = "METRICS"
+		coloredLevel = colorLime + level + colorReset
 	default:
+		level = record.Level.String() // Используем стандартное представление для других уровней
 		coloredLevel = level
 	}
 
@@ -80,6 +99,11 @@ func (h *ColorLevelHandler) Handle(ctx context.Context, record slog.Record) erro
 	if err != nil {
 		return err
 	}
-	
+
 	return nil
+}
+
+// Metrics — кастомный метод для логирования на уровне LevelMetrics
+func (l *Logger) Metrics(msg string, args ...any) {
+	l.Log(context.Background(), LevelMetrics, msg, args...)
 }

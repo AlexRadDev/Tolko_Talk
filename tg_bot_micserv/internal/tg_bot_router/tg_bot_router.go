@@ -32,7 +32,6 @@ func (r *Router) HandleUpdate(w http.ResponseWriter, req *http.Request) {
 
 	// Создаём структуру для хранения обновления
 	var update tgbotapi.Update
-
 	if err := json.NewDecoder(req.Body).Decode(&update); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
 		return
@@ -40,13 +39,13 @@ func (r *Router) HandleUpdate(w http.ResponseWriter, req *http.Request) {
 	myLogger.Info("Успешно декодировали JSON из тела запроса")
 
 	if update.Message != nil {
+		//updateType = "message"
 		err := r.tgBotUserCase.HandleMessage(ctx, r.tgBot, update.Message.Chat.ID, update.Message.Text)
 		if err != nil {
 			myLogger.Error(fmt.Sprintf("Ошибка обработки запроса в HandleMessage: %v", err))
 		}
 		myLogger.Info("Успешно передали запрос в бизнес-логику")
 	}
-
 	w.WriteHeader(http.StatusOK)
 }
 
@@ -59,16 +58,19 @@ func (r *Router) ProcessUpdate(update tgbotapi.Update) {
 
 	// Обработка обычных сообщений
 	if update.Message != nil {
+		//updateType = "message"
 		err := r.tgBotUserCase.HandleMessage(ctx, r.tgBot, update.Message.Chat.ID, update.Message.Text)
 		if err != nil {
 			myLogger.Error(fmt.Sprintf("Ошибка обработки запроса в HandleMessage: %v", err))
 		}
 		myLogger.Info("Успешно обработали сообщение")
+
 		return
 	}
 
 	// Обработка нажатий на кнопки CallbackQuery
 	if update.CallbackQuery != nil {
+
 		callback := tgbotapi.NewCallback(update.CallbackQuery.ID, "")
 		if _, err := r.tgBot.Request(callback); err != nil {
 			myLogger.Error(fmt.Sprintf("Ошибка при ответе на callback: %v", err))
@@ -79,6 +81,7 @@ func (r *Router) ProcessUpdate(update tgbotapi.Update) {
 			myLogger.Error(fmt.Sprintf("Ошибка обработки действий в HandleCallback: %v", err))
 		}
 		myLogger.Info("Успешно обработали callback")
+
 		return
 	}
 }

@@ -1,12 +1,8 @@
-// Файл producer.go реализует Kafka-продюсер для отправки сообщений в брокер.
-// Отвечает за настройку соединения с Kafka и асинхронную отправку сообщений в указанный топик
-
 package producer
 
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net"
 	"strconv"
 	"time"
@@ -19,7 +15,7 @@ import (
 
 // Структура Producer содержит Kafka-продюсер
 type Producer struct {
-	Writer *kafka.Writer // Объект для записи сообщений в Kafka
+	Writer *kafka.Writer
 }
 
 // NewProducer создаёт новый Kafka-продюсер
@@ -69,13 +65,14 @@ func (p *Producer) SendMessage(ctx context.Context, nameTopic string, data []byt
 		myLogger.Error(fmt.Sprintf("Ошибка отправки сообщения в Kafka: %v, Name Topic: %v", err, nameTopic))
 		return err
 	}
+	myLogger.Info(fmt.Sprintf("сообщение успешно отравлено в Kafka Name Topic: %v", nameTopic))
 
 	return nil
 }
 
 // topicExists проверяет, существует ли топик в кластере Kafka.
 func (p *Producer) topicExists(ctx context.Context, topic string) (bool, error) {
-	const lbltopicExists = "internal/kafka/producer/producer.go/topicExists()"
+	const lbltopicExists = "internal/kafka/producer/topicExists()"
 	myLogger := logger.NewColorLogger(lbltopicExists)
 
 	// Получаем соединение с контроллером
@@ -103,7 +100,7 @@ func (p *Producer) topicExists(ctx context.Context, topic string) (bool, error) 
 
 // createTopic создаёт новый топик с заданной конфигурацией.
 func (p *Producer) createTopic(ctx context.Context, topic string) error {
-	const lblcreateTopic = "internal/kafka/producer/producer.go/topicExists()"
+	const lblcreateTopic = "internal/kafka/producer/topicExists()"
 	myLogger := logger.NewColorLogger(lblcreateTopic)
 
 	// Получаем соединение с контроллером
@@ -133,7 +130,6 @@ func (p *Producer) createTopic(ctx context.Context, topic string) error {
 		return fmt.Errorf("создание топика %s: %w", topic, err)
 	}
 
-	// Ждем 3 секунды для распространения метаданных о новом топике
 	time.Sleep(3 * time.Second)
 
 	return nil
@@ -141,8 +137,8 @@ func (p *Producer) createTopic(ctx context.Context, topic string) error {
 
 // getControllerConn устанавливает соединение с контроллером Kafka
 func (p *Producer) getControllerConn(ctx context.Context) (*kafka.Conn, error) {
-	const lbl = "internal/kafka/producer/producer.go/getControllerConn()"
-	myLogger := logger.NewColorLogger(lbl)
+	const lblgetCont = "internal/kafka/producer/getControllerConn()"
+	myLogger := logger.NewColorLogger(lblgetCont)
 
 	// Подключаемся к Kafka
 	conn, err := kafka.DialContext(ctx, "tcp", p.Writer.Addr.String())
@@ -154,7 +150,7 @@ func (p *Producer) getControllerConn(ctx context.Context) (*kafka.Conn, error) {
 	// Получаем контроллера кластера
 	controller, err := conn.Controller()
 	if err != nil {
-		conn.Close() // Закрываем соединение при ошибке
+		conn.Close()
 		myLogger.Error(fmt.Sprintf("Не удалось получить контроллер: %v", err))
 		return nil, fmt.Errorf("получение контроллера: %w", err)
 	}
@@ -165,12 +161,11 @@ func (p *Producer) getControllerConn(ctx context.Context) (*kafka.Conn, error) {
 	// Подключаемся к контроллеру
 	ctrlConn, err := kafka.DialContext(ctx, "tcp", controllerAddr)
 	if err != nil {
-		conn.Close() // Закрываем первое соединение при ошибке
+		conn.Close()
 		myLogger.Error(fmt.Sprintf("Не удалось подключиться к контроллеру: %v", err))
 		return nil, fmt.Errorf("подключение к контроллеру: %w", err)
 	}
 
-	// Закрываем первое соединение, так как оно больше не нужно
 	conn.Close()
 
 	return ctrlConn, nil
@@ -178,11 +173,15 @@ func (p *Producer) getControllerConn(ctx context.Context) (*kafka.Conn, error) {
 
 // Close закрывает соединение с Kafka
 func (p *Producer) Close() error {
+	const lblClose = "internal/kafka/producer/Close()"
+	myLogger := logger.NewColorLogger(lblClose)
+
 	err := p.Writer.Close()
 	if err != nil {
-		slog.Error("Ошибка закрытия Kafka-продюсера", "error", err)
+		myLogger.Error(fmt.Sprintf("Ошибка закрытия Kafka-продюсера: %v", err))
 		return err
 	}
-	slog.Info("Kafka-продюсер успешно закрыт")
+
+	myLogger.Info("Kafka-продюсер успешно закрыт")
 	return nil
 }

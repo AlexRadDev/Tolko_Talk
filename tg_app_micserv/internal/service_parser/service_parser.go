@@ -3,44 +3,36 @@
 package service_parser
 
 import (
-	"context"
-	"fmt"
+	//"context"
+	tg_post_model "tg_app_micserv/internal/model"
+
+	//"fmt"
 	"regexp"
 	"strings"
-	"tg_app_micserv/internal/kafka/producer"
-	"time"
+	//"tg_app_micserv/internal/kafka/producer"
+	//"time"
 	"unicode/utf8"
-
-	"tg_app_micserv/internal/model/interfaces"
-	"tg_app_micserv/tools/logger"
+	//"tg_app_micserv/internal/model/interfaces"
+	//"tg_app_micserv/tools/logger"
 )
 
 // ServiceParser организует получение и очистку сообщений
-type ServiceParser struct {
-	parser     interfaces.ServiceParser // Интерфейс для получения сообщений
-	producer   producer.MessageProducer // Интерфейс для отправки в Kafka
-	formatText interfaces.TextCleaner   // Интерфейс для очистки текста
-}
+//type ServiceParserSTR struct {
+//	parser     interfaces.ServiceParser // Интерфейс для получения сообщений
+//	producer   producer.MessageProducer // Интерфейс для отправки в Kafka
+//	formatText interfaces.TextCleaner   // Интерфейс для очистки текста
+//}
 
 // NewMessageService создает новый ServiceParser
-func NewServiceParser(parser interfaces.ServiceParser) *ServiceParser {
-	return &ServiceParser{
-		parser: parser,
-	}
-}
+//func NewServiceParser(parser interfaces.ServiceParser) *ServiceParser {
+//	return &ServiceParser{
+//		parser: parser,
+//	}
+//}
 
-// FetchMessages парсит и обрабатывает посты(текст) из канала
-func (s *ServiceParser) PostParser(ctx context.Context, nameChannel string, timePeriod time.Duration) (map[int64]string, error) {
-	const lbl = "tg_app_micserv/internal/service_parser/service_parser.go/PostParser()"
-	mylogger := logger.NewColorLogger(lbl)
-
-	// Получаем постов из ТГ канала
-	messages, err := s.parser.PostParser(ctx, nameChannel, timePeriod)
-	if err != nil {
-		mylogger.Error(fmt.Sprintf("Ошибка из PostParser: %v", err))
-		return nil, err
-	}
-	mylogger.Info("Успешно спарсили посты")
+func FormationTextForTTS(messages []tg_post_model.Message) (map[int64]string, error) {
+	//const lbl = "tg_app_micserv/internal/service_parser/service_parser.go/ServiceParser()"
+	//mylogger := logger.NewColorLogger(lbl)
 
 	// Создаем карту для хранения обработанных сообщений
 	messageMap := make(map[int64]string, 0)
@@ -104,4 +96,12 @@ func FormatText(input string) string {
 	}
 
 	return result
+}
+
+// ExtractChannelName Форматируем имя канала, превращаем ссылку в нужный формат для TG API PARSER
+func ExtractChannelName(input string) string {
+	if strings.HasPrefix(input, "@") {
+		return input[1:]
+	}
+	return strings.TrimPrefix(input, "https://t.me/")
 }

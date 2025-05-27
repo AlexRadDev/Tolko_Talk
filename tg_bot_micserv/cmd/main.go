@@ -7,11 +7,16 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"tg_bot/internal/metrics/metrics_prometheus"
 	"time"
+
+	//"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"tg_bot/internal/config"
 	"tg_bot/internal/kafka/consumer"
 	"tg_bot/internal/kafka/producer"
+	"tg_bot/internal/metrics/metrics_time"
 	"tg_bot/internal/server"
 	"tg_bot/internal/storage/interface_channel_list_storage"
 	"tg_bot/internal/storage/interface_requests_storage"
@@ -31,14 +36,16 @@ func main() {
 	// Создание логгера с меткой
 	const lblmain = "cmd/main.go/main()"
 	myLoggeg := logger.NewColorLogger(lblmain)
-	slog.SetDefault(myLoggeg)
+	//slog.SetDefault(myLoggeg)
 
+	//region Загрузка переменных окружения из файла .env
 	//Загружаем переменные окружения из файла .env
 	//if err := godotenv.Load(envPath); err != nil {
 	//	slog.Error("Ошибка загрузки .env файла", "error", err)
 	//	os.Exit(1)
 	//}
 	//slog.Info("Успешно прочитали файл .env")
+	//endregion
 
 	// Создание конфига
 	cfg, err := config.Load()
@@ -46,19 +53,22 @@ func main() {
 		slog.Error("Ошибка загрузки конфигурации", "error", err)
 		os.Exit(1)
 	}
-	slog.Info("Успешно создали объект кофига")
+	myLoggeg.Info("Успешно создали объект кофига")
+
+	metricsTime := metrics_time.NewMetricsTime()
+	metricsPrometheus := metrics_prometheus.NewTGBotMetricsPrometheus()
 
 	// Создание Telegram-бота
 	tgBot, err := tg_bot_init.NewBot(cfg.TGBotToken)
 	if err != nil {
-		slog.Error("Ошибка инициализации Telegram-бота", "error", err)
+		myLoggeg.Error("Ошибка инициализации Telegram-бота", "error", err)
 		os.Exit(1)
 	}
 	slog.Info(fmt.Sprintf("Бот авторизован как @%s", tgBot.Self.UserName))
 
 	// Создание хранилища для состояния запросов пользователей
 	storageReqUsers := map_requests_storage.NewRepoUserRequests()
-	slog.Info("Успешно создали хранилище для состояния пользователей")
+	myLoggeg.Info("Успешно создали хранилище для состояния пользователей")
 
 	var mapRequests interface_requests_storage.UserRequestRepository
 	mapRequests = storageReqUsers
@@ -69,28 +79,31 @@ func main() {
 	kafkaProducer := producer.NewProducer(cfg)
 	defer func() {
 		if err := kafkaProducer.Close(); err != nil {
-			slog.Error("Ошибка при закрытии Kafka-продюсера", "error", err)
+			myLoggeg.Error("Ошибка при закрытии Kafka-продюсера", "error", err)
 		} else {
-			slog.Info("Kafka-продюсер успешно закрыт")
+			myLoggeg.Info("Kafka-продюсер успешно закрыт")
 		}
 	}()
-	slog.Info("Успешно создали Kafka-продюсер")
+	myLoggeg.Info("Успешно создали Kafka-продюсер")
 
 	// Создание Топиков в kafka
 	for _, nameTopic := range cfg.KafkaTopicSlise {
-		kafkaProducer.CheckingAndCreatingTopics(ctx, nameTopic)
+		err := kafkaProducer.CheckingAndCreatingTopics(ctx, nameTopic)
+		if err != nil {
+			myLoggeg.Error("Ошибка при создании топиков в Kafka", "error", err)
+		}
 	}
 
 	// Создание Kafka-консьюмера 01
-	kafkaConsumer01 := consumer.NewConsumer(cfg, 1)
+	kafkaConsumer01 := consumer.NewConsumer(cfg, 1, metricsTime, metricsPrometheus)
 	defer func() {
 		if err := kafkaConsumer01.Close(); err != nil {
-			slog.Error("Ошибка при закрытии Kafka-консьюмера 01", "error", err)
+			myLoggeg.Error("Ошибка при закрытии Kafka-консьюмера 01", "error", err)
 		} else {
-			slog.Info("Kafka-консьюмер 01 успешно закрыт")
+			myLoggeg.Info("Kafka-консьюмер 01 успешно закрыт")
 		}
 	}()
-	slog.Info("Успешно создали kafka Consumer-а 01 (text_to_speech → tg_bot)")
+	myLoggeg.Info("Успешно создали kafka Consumer-а 01 (text_to_speech → tg_bot)")
 	// Запуск консьюмера 01
 	go func() {
 		if err := kafkaConsumer01.Consume01(ctx, tgBot); err != nil {
@@ -98,15 +111,15 @@ func main() {
 		}
 	}()
 	// Создание Kafka-консьюмера 02
-	kafkaConsumer02 := consumer.NewConsumer(cfg, 2)
+	kafkaConsumer02 := consumer.NewConsumer(cfg, 2, metricsTime, metricsPrometheus)
 	defer func() {
 		if err := kafkaConsumer02.Close(); err != nil {
-			slog.Error("Ошибка при закрытии Kafka-консьюмера 02", "error", err)
+			myLoggeg.Error("Ошибка при закрытии Kafka-консьюмера 02", "error", err)
 		} else {
-			slog.Info("Kafka-консьюмер 02 успешно закрыт")
+			myLoggeg.Info("Kafka-консьюмер 02 успешно закрыт")
 		}
 	}()
-	slog.Info("Успешно создали kafka Consumer-а 02 (tg_app → tg_bot)")
+	myLoggeg.Info("Успешно создали kafka Consumer-а 02 (tg_app → tg_bot)")
 	// Запуск консьюмера 02
 	go func() {
 		if err := kafkaConsumer02.Consume02(ctx, tgBot); err != nil {
@@ -118,29 +131,25 @@ func main() {
 	// Создание подключения к БД
 	postgresStorage, err := postgres_channel_list_storage.NewPostgresStorage(cfg)
 	if err != nil {
-		slog.Error("Ошибка подключения к бд Postgres", "error", err)
+		myLoggeg.Error("Ошибка подключения к бд Postgres", "error", err)
 		log.Fatalf("Ошибка подключения к бд Postgres: %v", err)
 	}
 	defer postgresStorage.Close()
-
-	// Создание хранилища Go Map для запросов пользователя
-	//MapStorage := map_channel_list_storage.NewMapStorage()
-	//slog.Info("Успешно создали объект MapStorage")
 
 	// Объявили переменную для Storage interface
 	var storageInterface interface_channel_list_storage.StorageInterface
 	storageInterface = postgresStorage
 
 	// Создание слой бизнес-логики
-	userCase := tg_bot_user_case.NewUseCase(mapRequests, kafkaProducer, storageInterface)
-	slog.Info("Успешно создали объект userCase")
+	userCase := tg_bot_user_case.NewUseCase(mapRequests, kafkaProducer, storageInterface, metricsTime, metricsPrometheus)
+	myLoggeg.Info("Успешно создали объект userCase")
 
 	// Создание HTTP-роутера
 	router := tg_bot_router2.NewRouter(tgBot, userCase)
 
 	// Настройка Long Polling для получения обновлений
 	updates := tg_bot_init.SetupLongPolling(tgBot)
-	slog.Info("Запущен режим Long Polling для получения обновлений")
+	myLoggeg.Info("Запущен режим Long Polling для получения обновлений")
 
 	// Запуск обработки обновлений состояния запросов
 	go func() {
@@ -150,13 +159,9 @@ func main() {
 	}()
 
 	// Настраиваем HTTP-мультиплексор для обработки запросов
-	mux := http.NewServeMux() // эта строка Создаёт новый HTTP-мультиплексор (роутер) для обработки HTTP-запросов и сохраняет его в переменную mux.
-	// ServeMux — это структура, которая используется для маршрутизации HTTP-запросов.
-	// Она сопоставляет (т.е. соединяет) URL-пути (например, /tgBotPost) с обработчиками (функциями, которые обрабатывают эти запросы).
-	// Без мультиплексора сервер мог бы обрабатывать только один обработчик для всех запросов.
-	// ServeMux позволяет разделить логику обработки в зависимости от пути (много разных вариантов)
-
+	mux := http.NewServeMux()
 	mux.HandleFunc("/tgBotPost", router.HandleUpdate)
+	mux.Handle("/metrics", promhttp.Handler())
 
 	// Создание HTTP-сервера
 	srv := server.NewServer(cfg, mux)
@@ -168,15 +173,14 @@ func main() {
 		}
 	}()
 
-	// Ожидаем сигнал завершения и выполняем graceful shutdown
+	// Ожидаем сигнал для graceful shutdown
 	srv.WaitForShutdown()
-	// Отменяем контекст для завершения всех горутин
-	cancel()
-	slog.Info("Инициировано завершение всех горутин")
 
-	// Даём время на завершение операций (например, завершение обработки сообщений)
+	cancel()
+	myLoggeg.Info("Инициировано завершение всех горутин")
+
 	select {
 	case <-time.After(5 * time.Second):
-		slog.Info("Программа завершена")
+		myLoggeg.Info("Программа завершена")
 	}
 }

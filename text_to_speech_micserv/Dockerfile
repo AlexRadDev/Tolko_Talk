@@ -11,12 +11,13 @@ RUN go mod download
 # Копируем весь исходный код
 COPY . .
 
-# Собираем исполняемый файл
-RUN go build -o main ./cmd/main.go
+# Собираем исполняемый файл с оптимизацией для размера
+RUN CGO_ENABLED=0 GOOS=linux go build -a -ldflags '-s -w' -o main ./cmd/main.go
 
 # Создаём финальный минимальный образ
-FROM golang:1.23.6
+FROM alpine:latest
 
+# Устанавливаем рабочую директорию
 WORKDIR /app
 
 # Копируем собранный бинарный файл из стадии builder

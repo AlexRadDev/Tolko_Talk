@@ -4,17 +4,17 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"strconv"
 	"strings"
-	"tg_bot/internal/model/bot_request"
-
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
-
 	"tg_bot/internal/kafka/producer"
+	"tg_bot/internal/metrics/metrics_prometheus"
+	"tg_bot/internal/metrics/metrics_time"
+	"tg_bot/internal/model/model_kafka"
 	"tg_bot/internal/storage/interface_channel_list_storage"
 	"tg_bot/internal/storage/interface_requests_storage"
 	"tg_bot/tools/logger"
+	"time"
 )
 
 // Константы для клавиатур
@@ -85,21 +85,29 @@ func init() {
 
 // UseCase содержит бизнес-логику Telegram-бота
 type UseCase struct {
-	logger        *slog.Logger
-	repo          interface_requests_storage.UserRequestRepository
-	kafkaProducer *producer.Producer
-	storage       interface_channel_list_storage.StorageInterface
+	logger            *logger.Logger
+	repo              interface_requests_storage.UserRequestRepository
+	kafkaProducer     *producer.Producer
+	storage           interface_channel_list_storage.StorageInterface
+	MetricsTime       *metrics_time.MetricsTime
+	MetricsPrometheus *metrics_prometheus.TGBotMetricsPrometheus
 }
 
 const lblname = "tg_bot/internal/tg_bot_user_case" // Метка места для логирования
 
 // NewUseCase создаёт новый экземпляр UseCase
-func NewUseCase(repo interface_requests_storage.UserRequestRepository, kafkaProducer *producer.Producer, storage interface_channel_list_storage.StorageInterface) *UseCase {
+func NewUseCase(repo interface_requests_storage.UserRequestRepository,
+	kafkaProducer *producer.Producer,
+	storage interface_channel_list_storage.StorageInterface,
+	metricsTime *metrics_time.MetricsTime,
+	metricsPrometheus *metrics_prometheus.TGBotMetricsPrometheus) *UseCase {
 	return &UseCase{
-		logger:        logger.NewColorLogger(lblname),
-		repo:          repo,
-		kafkaProducer: kafkaProducer,
-		storage:       storage,
+		logger:            logger.NewColorLogger(lblname),
+		repo:              repo,
+		kafkaProducer:     kafkaProducer,
+		storage:           storage,
+		MetricsTime:       metricsTime,
+		MetricsPrometheus: metricsPrometheus,
 	}
 }
 
@@ -149,7 +157,7 @@ func (uc *UseCase) handleStart(bot *tgbotapi.BotAPI, chatID int64) error {
 }
 
 // handleAddChannel запрашивает ввод канала
-func (uc *UseCase) handleAddChannel(bot *tgbotapi.BotAPI, chatID int64, request *bot_request.TgBotRequest) error {
+func (uc *UseCase) handleAddChannel(bot *tgbotapi.BotAPI, chatID int64, request *model_kafka.KafkaMessageFromTGAPP) error {
 	request.AwaitingChannelInput = true
 	msg := tgbotapi.NewMessage(chatID, "Введите имя и ссылку на канал в формате: Название|Ссылка (Пример: MyChannel|https://t.me/mychannel)")
 	msg.ReplyMarkup = BackKeyboard
@@ -239,7 +247,7 @@ func (uc *UseCase) handleSelectSpeechRate(bot *tgbotapi.BotAPI, chatID int64) er
 }
 
 // handleSpeechRateInput сохраняет выбранную скорость речи
-func (uc *UseCase) handleSpeechRateInput(bot *tgbotapi.BotAPI, chatID int64, text string, request *bot_request.TgBotRequest) error {
+func (uc *UseCase) handleSpeechRateInput(bot *tgbotapi.BotAPI, chatID int64, text string, request *model_kafka.KafkaMessageFromTGAPP) error {
 	rate, err := strconv.ParseFloat(text, 64)
 	if err != nil {
 		return fmt.Errorf("Ошибка конвертации скорости речи из string в float64 %q: %w", text, err)
@@ -269,7 +277,7 @@ func (uc *UseCase) handleSelectTimePeriod(bot *tgbotapi.BotAPI, chatID int64) er
 }
 
 // handleTimePeriodInput сохраняет выбранный период времени
-func (uc *UseCase) handleTimePeriodInput(bot *tgbotapi.BotAPI, chatID int64, text string, request *bot_request.TgBotRequest) error {
+func (uc *UseCase) handleTimePeriodInput(bot *tgbotapi.BotAPI, chatID int64, text string, request *model_kafka.KafkaMessageFromTGAPP) error {
 	period, err := strconv.Atoi(text)
 	if err != nil {
 		return fmt.Errorf("ошибка парсинга периода времени %q: %w", text, err)
@@ -288,7 +296,7 @@ func (uc *UseCase) handleTimePeriodInput(bot *tgbotapi.BotAPI, chatID int64, tex
 }
 
 // handleBack возвращает в главное меню
-func (uc *UseCase) handleBack(bot *tgbotapi.BotAPI, chatID int64, request *bot_request.TgBotRequest) error {
+func (uc *UseCase) handleBack(bot *tgbotapi.BotAPI, chatID int64, request *model_kafka.KafkaMessageFromTGAPP) error {
 	msg := tgbotapi.NewMessage(chatID, "Вернулись в главное меню.\nВыберите действие:")
 	msg.ReplyMarkup = MainKeyboard
 	_, err := bot.Send(msg)
@@ -302,7 +310,7 @@ func (uc *UseCase) handleBack(bot *tgbotapi.BotAPI, chatID int64, request *bot_r
 }
 
 // handleSendRequest отправляет запрос в Kafka
-func (uc *UseCase) handleSendRequest(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, request *bot_request.TgBotRequest) error {
+func (uc *UseCase) handleSendRequest(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, request *model_kafka.KafkaMessageFromTGAPP) error {
 	request.ChatID = chatID
 	if request.NameChanel == "" {
 		msg := tgbotapi.NewMessage(chatID, "Ошибка: Канал не выбран.\nПожалуйста, выберите канал перед отправкой.")
@@ -318,6 +326,18 @@ func (uc *UseCase) handleSendRequest(ctx context.Context, bot *tgbotapi.BotAPI, 
 	if request.SpeakingRate == 0 {
 		request.SpeakingRate = 1.2
 	}
+
+	// Фиксируем значения для метрик в прометэус
+	uc.MetricsPrometheus.RequestID++
+	uc.MetricsPrometheus.ChatID = chatID
+	uc.MetricsPrometheus.TimeStartRequest = time.Now()
+
+	uc.MetricsTime.TimeRequest = time.Now()
+	uc.MetricsTime.RequestID++
+	uc.MetricsTime.ChatID = chatID
+
+	request.RequestID = strconv.FormatInt(uc.MetricsPrometheus.RequestID, 10)
+	uc.MetricsPrometheus.IncUpdate() // считает количество запросов
 
 	jsonData, err := json.Marshal(request)
 	if err != nil {
@@ -353,7 +373,7 @@ func (uc *UseCase) handleSendRequest(ctx context.Context, bot *tgbotapi.BotAPI, 
 }
 
 // handleDefault обрабатывает неизвестные команды
-func (uc *UseCase) handleDefault(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, text string, request *bot_request.TgBotRequest) error {
+func (uc *UseCase) handleDefault(ctx context.Context, bot *tgbotapi.BotAPI, chatID int64, text string, request *model_kafka.KafkaMessageFromTGAPP) error {
 	if !request.AwaitingChannelInput {
 		msg := tgbotapi.NewMessage(chatID, "Пожалуйста, выберите действие:")
 		msg.ReplyMarkup = MainKeyboard
@@ -368,8 +388,13 @@ func (uc *UseCase) handleDefault(ctx context.Context, bot *tgbotapi.BotAPI, chat
 	}
 
 	parts := strings.SplitN(text, "|", 2)
-	if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" || !strings.HasPrefix(parts[1], "https://t.me/") {
-		msg := tgbotapi.NewMessage(chatID, "Ошибка: Введите имя и ссылку в формате: Название|Ссылка (например, MyChannel|https://t.me/mychannel)")
+	if len(parts) != 2 ||
+		strings.TrimSpace(parts[0]) == "" ||
+		strings.TrimSpace(parts[0]) == " " ||
+		strings.TrimSpace(parts[1]) == "" ||
+		strings.TrimSpace(parts[1]) == " " ||
+		!strings.HasPrefix(parts[1], "https://t.me/") {
+		msg := tgbotapi.NewMessage(chatID, "Ошибка: Введите имя и ссылку в формате: Название|Ссылка (например: MyChannel|https://t.me/mychannel)")
 		_, err := bot.Send(msg)
 		if err != nil {
 			return fmt.Errorf("ошибка отправки сообщения: %w", err)
@@ -437,7 +462,7 @@ func (uc *UseCase) HandleCallback(bot *tgbotapi.BotAPI, chatID int64, callbackDa
 	case strings.HasPrefix(callbackData, "delete_channel_"):
 		channelName := strings.TrimSpace(callbackData[15:])
 
-		// TODO: Оюработать ошибку удаления канала из списка
+		// TODO: Обработать ошибку удаления канала из списка
 		uc.storage.DeleteChannels(chatID, channelName)
 
 		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Канал %s удалён из избранного.\nВыберите действие:", channelName))

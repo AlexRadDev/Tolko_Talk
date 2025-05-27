@@ -1,13 +1,13 @@
-# Этот файл описывает конфигурацию сервисов для запуска docker контэйнеров Zookeeper, Kafka и UI for Apache Kafka.
+# слева это снаружи контейнера, справа внутри контейнера
 # http://localhost:9000
 
-version: '3'
+# version: '3.8'
 
 services:
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
     ports:
-      - 9000:8080 # слева это снаружи контейнера, справа внутри контейнера
+      - 9000:8080
     environment:
       - KAFKA_CLUSTERS_0_NAME=local
       - KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS=kafka-1:9092,kafka-2:9092,kafka-3:9092
@@ -45,7 +45,7 @@ services:
 
 
   kafka-2:
-    image: wurstmeister/kafka #confluentinc/cp-server:7.7.1
+    image: wurstmeister/kafka
     ports:
       - 9096:9094
     environment:
@@ -64,7 +64,7 @@ services:
 
 
   kafka-3:
-    image: wurstmeister/kafka #confluentinc/cp-server:7.7.1
+    image: wurstmeister/kafka
     ports:
       - 9097:9094
     environment:
@@ -79,7 +79,7 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     networks:
-    - tg-bot-net # kafka-net
+    - tg-bot-net
 
 
   tg-bot:
@@ -97,7 +97,7 @@ services:
       NAME_TOPIC_03: tgapp-texttospeech
       NAME_TOPIC_04: tgapp-tgbot
 
-      DB_HOST: postgres-db # localhost # postgres-db
+      DB_HOST: postgres-db
       DB_PORT: 5432
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
@@ -115,7 +115,7 @@ services:
       TELEGRAM_API_HASH: 6599085d191668bc4190c2cefdbb48f0
       PHONE: +375298370019
       TELEGRAM_PASSWORD: 7#_QA6g-1Hd5+zF=2?TE-jqk4pA
-      PORT: 5002
+      SERVER_PORT: 5002
       KAFKA_PORT_01: kafka-1:9092
       KAFKA_PORT_02: kafka-2:9092
       KAFKA_PORT_03: kafka-3:9092
@@ -130,7 +130,7 @@ services:
     ports:
       - 5003:5003
     environment:
-      SERVER_PORT: :5003
+      SERVER_PORT: 5003
       GOOGLE_CREDENTIALS_FILE: /app/semiotic-mender-459813-c9-fdcf02adec5e.json
       KAFKA_PORT_01: kafka-1:9092
       KAFKA_PORT_02: kafka-2:9092
@@ -145,15 +145,13 @@ services:
     image: postgres:15.2
     # container_name: tg-bot-db-postgres
     ports:
-      - 5439:5432 # слева это снаружи контейнера, справа внутри контейнера
+      - 5439:5432
     environment:
       POSTGRES_DB: postgres
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: postgres
-      # POSTGRES_INITDB_ARGS: "--encoding=UTF8 --locale=C"
     volumes:
-      - ./postgres-data:/var/lib/postgresql/data # \\wsl$\docker-desktop-data\version-pack-data\community\docker\volumes\postgres_data\_data
-      # - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+      - ./postgres-data:/var/lib/postgresql/data
     networks:
       - tg-bot-net
       # restart: unless-stopped
@@ -162,6 +160,25 @@ services:
       # interval: 10s # Интервал между проверками
       # timeout: 5s # Максимальное время ожидания ответа
       # retries: 5 # Количество попыток перед объявлением "нездоровым"
+
+  prometheus:
+    image: prom/prometheus:latest
+    ports:
+      - 9898:9090
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./metrics/prometheus:/prometheus:rw
+    networks:
+      - tg-bot-net
+
+  grafana:
+    image: grafana/grafana:latest
+    ports:
+      - 3888:3000
+    volumes:
+     - ./metrics/grafana:/var/lib/grafana:rw
+    networks:
+      - tg-bot-net
 
 
 networks:

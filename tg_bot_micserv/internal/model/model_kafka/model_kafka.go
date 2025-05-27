@@ -1,22 +1,26 @@
 package model_kafka
 
-// KafkaMessageFromTGAPP представляет структуру сообщения из topic Kafka ("tgbot-tgapp")
+// KafkaMessageFromTGAPP представляет структуру сообщения для topic Kafka ("tgbot-tgapp")
 type KafkaMessageFromTGAPP struct {
-	ChatID               int64            `json:"ChatID"`               // идентификатор чата Telegram
-	SpeakingRate         float64          `json:"SpeakingRate"`         // скорость речи
-	AwaitingChannelInput bool             `json:"AwaitingChannelInput"` // флаг, указывающий, ожидается ли ввод имени канала
-	TextForAudio         map[int64]string `json:"TextForAudio"`         // Мапа с постами, для отправки по очереди в text to speech Google
+	ChatID               int64   `json:"ChatID"`
+	RequestID            string  `json:"RequestID"`
+	NameChanel           string  `json:"NameChanel"`
+	SpeakingRate         float64 `json:"SpeakingRate"`
+	TimePeriod           int     `json:"TimePeriod"`
+	AwaitingChannelInput bool    `json:"AwaitingChannelInput"` // флаг, указывающий, ожидается ли ввод имени канала
 }
 
-// KafkaRequestForTGBOT представляет структуру данных для получения сообщения из topic "texttospeech-tgbot"
-type KafkaRequestForTGBOT struct {
-	ChatID    int64  `json:"ChatID"`     // идентификатор чата Telegram
-	AudioData []byte `json:"audio_data"` // аудиоданные в формате MP3
+// KafkaAnswerFromTTS представляет структуру данных для получения ответа из topic "texttospeech-tgbot"
+type KafkaAnswerFromTTS struct {
+	ChatID    int64  `json:"ChatID"`
+	RequestID string `json:"RequestID"`
+	AudioData []byte `json:"audio_data"`
 }
 
-// KafkaRequestForTGappTGbot представляет структуру сообщения для topic "tgapp-tgbot"
+// KafkaRequestForTGappTGbot представляет структуру сообщения из topic "tgapp-tgbot"
 type KafkaRequestForTGappTGbot struct {
-	ChatID               int64  `json:"ChatID"`               // идентификатор чата Telegram
-	AwaitingChannelInput bool   `json:"AwaitingChannelInput"` // флаг, указывающий, ожидается ли ввод имени канала
-	TextForUsers         string `json:"TextForUsers"`         // Текст что постов за это время нет
+	ChatID               int64  `json:"ChatID"`
+	RequestID            string `json:"RequestID"`
+	AwaitingChannelInput bool   `json:"AwaitingChannelInput"`
+	TextForUsers         string `json:"TextForUsers"`
 }

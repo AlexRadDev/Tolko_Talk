@@ -1,22 +1,24 @@
 package model_kafka
 
-// KafkaMessageFromTGB представляет структуру данных сообщения из topic Kafka ("tgbot-tgapp")
+// KafkaMessageFromTGB представляет структуру данных сообщения из topic Kafka ("tgapp-texttospeech")
 type KafkaMessageFromTGAPP struct {
-	ChatID               int64            `json:"ChatID"`               // идентификатор чата Telegram
-	SpeakingRate         float64          `json:"SpeakingRate"`         // скорость речи
-	AwaitingChannelInput bool             `json:"AwaitingChannelInput"` // флаг, указывающий, ожидается ли ввод имени канала
-	TextForAudio         map[int64]string `json:"TextForAudio"`         // Мапа с постами, для отправки по очереди в text to speech Google
+	ChatID       int64            `json:"ChatID"`
+	RequestID    string           `json:"RequestID"`
+	SpeakingRate float64          `json:"SpeakingRate"`
+	TextForAudio map[int64]string `json:"TextForAudio"`
 }
 
-// KafkaRequestForTGAPP представляет структуру данных для сообщения в topic Kafka "tgapp-texttospeech"
-type KafkaRequestForTGAPP struct {
-	ChatID    int64  `json:"ChatID"`     // идентификатор чата Telegram
+// KafkaRequestForTGBot представляет структуру данных для сообщения в topic Kafka "texttospeech-tgbot"
+type KafkaRequestForTGBot struct {
+	ChatID    int64  `json:"ChatID"`
+	RequestID string `json:"RequestID"`
 	AudioData []byte `json:"audio_data"` // аудиоданные в формате MP3
 }
 
-func InitKafkaRequestForTTS(chatID int64, combinedAudio []byte) *KafkaRequestForTGAPP {
-	return &KafkaRequestForTGAPP{
-		ChatID:    chatID,
+func InitKafkaRequestForTTS(MessageFromTGAPP *KafkaMessageFromTGAPP, combinedAudio []byte) *KafkaRequestForTGBot {
+	return &KafkaRequestForTGBot{
+		ChatID:    MessageFromTGAPP.ChatID,
+		RequestID: MessageFromTGAPP.RequestID,
 		AudioData: combinedAudio,
 	}
 }

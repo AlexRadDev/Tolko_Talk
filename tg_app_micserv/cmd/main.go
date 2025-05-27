@@ -4,39 +4,49 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"log/slog"
+	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"tg_app_micserv/internal/config"
 	"tg_app_micserv/internal/kafka/consumer"
 	"tg_app_micserv/internal/kafka/producer"
-	"tg_app_micserv/internal/tg_session_storage"
+	"tg_app_micserv/internal/metrics/metrics_prometheus"
+	"tg_app_micserv/internal/tg_app_init"
+	"tg_app_micserv/internal/tg_app_session_storage"
 	"tg_app_micserv/tools/logger"
 )
 
 const (
 	pathEnv         = ".env"
 	lbl             = "tg_app_micserv/cmd/main.go/main()"
-	pathSessionJson = "/app/session.json" // session.json
+	pathSessionJson = "/app/session.json" // "/app/session.json" - адрес внутри контейнера. (session.json - адрес тут)
 )
 
 func main() {
-	// Инициализация логера
 	mylogger := logger.NewColorLogger(lbl)
 	slog.SetDefault(mylogger)
-	slog.Info("Запустили обертку logger")
 
+	//region Загрузка файла конфига .env
 	//err := godotenv.Load(pathEnv)
 	//if err != nil {
 	//	slog.Error("Неудалось найти файл .env", "error", err)
 	//	log.Fatal(err)
 	//}
 	//slog.Info("Подгрузили файл .env")
+	//endregion
 
-	// Загрузка конфигов
+	// Создание объекта сбора метрик Prometheus
+	metricsPrometheus := metrics_prometheus.NewTGBotMetricsPrometheus()
+
+	// Создание объекта конфига
 	cfg, err := config.Load()
 	if err != nil {
 		slog.Error("Не удалось загрузить конфиг", "error", err)
@@ -44,29 +54,23 @@ func main() {
 	}
 	slog.Info("Успешно создали объект конфига")
 
-	// Инициализация зависимостей
-	// Инициализация хранилища сессии Telegram-клиента (локальный файл session.json)
-	sessionStorage := tg_session_storage.NewFileSessionStorage(pathSessionJson)
+	// Создание хранилища сессии Telegram-клиента (локальный файл session.json)
+	sessionStorage := tg_app_session_storage.NewFileSessionStorage(pathSessionJson)
 	slog.Info("Успешно создали объект хранилища сессии")
 
-	// Создание нового Telegram клиента с передачей API ID, Hash, телефона и 2FA пароля
-	//tgClient := tg_init_parser.NewClient(cfg.API_ID, cfg.API_Hash, cfg.Phone, cfg.Two_F_Password, sessionStorage)
-	//slog.Info("Успешно создали объект Telegram клиента")
-
-	// Создание сервиса для получения и очистки сообщений, использующего Telegram клиента
-	//serviceParser := service_parser.NewServiceParser(tgClient)
-	//slog.Info("Успешно создали Сервис для парсинга постов")
-
-	// Создание обработчика HTTP-запросов, передающего в него сервис парсер постов
-	//messageHandler := handlers.NewMessageHandler(serviceParser)
-	//slog.Info("Успешно создали объект обработчика HTTP-запросов")
+	appTGPostParser := tg_app_init.NewTGAppClient(cfg, sessionStorage, pathSessionJson)
+	slog.Info("Успешно создали tg app клиента")
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		if err := appTGPostParser.Start(ctx, cfg.Phone, cfg.Two_F_Password); err != nil {
+			slog.Error("Ошибка при запуске Telegram-клиента", "error", err)
+			log.Fatal(err)
+		}
+	}()
+	slog.Info("Успешно запустили tg app клиента")
 
 	// Создание kafka Producer-а
 	kafkaProducer := producer.NewProducer(cfg)
-	//if err != nil {
-	//	slog.Error("Не удалось создать Kafka-продюсер", "error", err)
-	//	log.Fatal(err)
-	//}
 	defer func() {
 		if err := kafkaProducer.Close(); err != nil {
 			slog.Error("Ошибка при закрытии Kafka-Producer", "error", err)
@@ -75,61 +79,53 @@ func main() {
 	slog.Info("Успешно создали kafka Producer-а")
 
 	// Создание kafka Consumer-а
-	kafkaConsumer := consumer.NewConsumer(cfg)
+	kafkaConsumer := consumer.NewConsumer(cfg, metricsPrometheus, appTGPostParser)
 	defer func() {
 		if err := kafkaConsumer.Close(); err != nil {
 			slog.Error("Ошибка при закрытии Kafka-Consumer", "error", err)
 		}
 	}()
 	slog.Info("Успешно создали kafka Consumer-а")
-	ctx, cancel := context.WithCancel(context.Background())
-	// Запуск консьюмера
+
+	//ctx, cancel := context.WithCancel(context.Background())
+
 	go func() {
-		if err := kafkaConsumer.Consume(ctx, cfg, sessionStorage, kafkaProducer, pathSessionJson); err != nil {
+		if err := kafkaConsumer.Consume(ctx, cfg, kafkaProducer); err != nil {
 			log.Fatalf("Ошибка в работе консьюмера: %v", err)
 		}
 	}()
 
-	// Создание сервера
-	//srv := server.NewServer(cfg.Port, messageHandler)
-	//slog.Info("Успешно создали объект сервер")
-
 	// Канал для сигналов прерывания
 	stop := make(chan os.Signal, 1)
-	signal.Notify(stop, os.Interrupt, syscall.SIGTERM)
+	signal.Notify(stop, syscall.SIGINT, syscall.SIGTERM)
 
-	// Запуск сервера в отдельной горутине
-	//go func() {
-	//	if err := srv.Run(); err != nil {
-	//		slog.Error("Сервер не запустился", "error", err)
-	//		log.Fatal(err)
-	//	}
-	//}()
+	http.Handle("/metrics", promhttp.Handler())
 
-	// Ожидание сигнала прерывания
+	srv := &http.Server{
+		Addr:    ":" + cfg.ServerPort,
+		Handler: nil,
+	}
+
+	go func() {
+		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			slog.Error("Ошибка при запуске сервера:", err)
+		}
+	}()
+	slog.Info(fmt.Sprintf("Сервер запущен на порту: %v", srv.Addr))
+
 	<-stop
 	slog.Info("Получен сигнал завершения, инициируется мягкая остановка")
 
-	cancel()
-	if err := kafkaConsumer.Close(); err != nil {
-		log.Fatalf("Ошибка закрытия консьюмера: %v", err)
+	ctx1, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := appTGPostParser.Close(ctx1); err != nil {
+		slog.Error("Ошибка при закрытии Telegram-клиента", "error", err)
 	}
-	slog.Info("Успешно закрыли консьюмера")
-
-	// Создание контекста с таймаутом для graceful shutdown
-	//ctx1, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-	//defer cancel()
-
 	// Завершение работы сервера
-	//if err := srv.Shutdown(ctx1); err != nil {
-	//	slog.Error("Ошибка при остановке сервера", "error", err)
-	//}
+	if err := srv.Shutdown(ctx1); err != nil {
+		slog.Error("Ошибка при остановке сервера:", err)
+	}
 
-	// Закрытие Telegram-клиента
-	//slog.Info("Завершение Telegram-клиента")
-	//if err := tgClient.Close(ctx1); err != nil {
-	//	slog.Error("Ошибка при закрытии Telegram-клиента", "error", err)
-	//}
-
-	//slog.Info("Сервер успешно остановлен")
+	slog.Info("Сервер успешно остановлен")
 }

@@ -30,6 +30,9 @@ tg_bot_micserv/.env
 .DS_Store
 Thumbs.db
 
+# Go Мои тесты нового кода
+tg_app_micserv/internal/kafka/consumer/consumer_my_test_code.go
+
 # Project specific
 docs/
 tmp/
@@ -38,7 +41,9 @@ monolith/tools/
 monolith/project-files.txt
 monolith/
 postgres-data/
-
+stable_version_file/
+tg_bot_micserv/internal/metrics/
+metrics/
 tg_bot_micserv/tools/scripts_start/
 #text_to_speech_micserv/tools/
 #tg_app_micserv/tools/
@@ -49,6 +54,8 @@ start_db_postgres_.sh
 start_tg_app_.sh
 start_tg_bot_.sh
 stsrt_text_to_speech_.sh
+start_prometheus_.sh
+start_grafana_.sh
 
 # Docker
 .dockerignore

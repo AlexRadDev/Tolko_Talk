@@ -3,7 +3,6 @@ package server
 import (
 	"context"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -17,7 +16,7 @@ import (
 // Server представляет HTTP-сервер
 type Server struct {
 	srv      *http.Server
-	myLogger *slog.Logger
+	myLogger *logger.Logger
 }
 
 // NewServer создаёт новый экземпляр сервера

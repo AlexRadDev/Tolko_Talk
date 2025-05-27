@@ -4,31 +4,35 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"strings"
+	"strconv"
 	"time"
 
 	"github.com/segmentio/kafka-go"
 
 	"tg_app_micserv/internal/config"
 	"tg_app_micserv/internal/kafka/producer"
+	"tg_app_micserv/internal/metrics/metrics_prometheus"
 	"tg_app_micserv/internal/model/model_kafka"
 	"tg_app_micserv/internal/service_parser"
-	"tg_app_micserv/internal/tg_init_parser"
-	"tg_app_micserv/internal/tg_session_storage"
+	"tg_app_micserv/internal/tg_app_init"
 	"tg_app_micserv/tools/logger"
 )
 
 // Consumer представляет Kafka-консьюмер.
 type Consumer struct {
-	Reader *kafka.Reader
+	Reader            *kafka.Reader
+	MetricsPrometheus *metrics_prometheus.TGBotMetricsPrometheus
+	AppTGPostParser   *tg_app_init.TGAppClient
 }
 
 // NewConsumer создаёт новый экземпляр Kafka-консьюмера.
-func NewConsumer(cfg *config.Config) *Consumer { // serviceParser *service_parser.ServiceParser
-	const lblNewConsumer = "tg_app_micserv/internal/kafka/consumer/consumer.go/NewConsumer()"
+func NewConsumer(cfg *config.Config,
+	metricsPrometheus *metrics_prometheus.TGBotMetricsPrometheus,
+	appTGPostParser *tg_app_init.TGAppClient) *Consumer {
+
+	const lblNewConsumer = "tg_app_micserv/internal/kafka/consumer/NewConsumer()"
 	mylogger := logger.NewColorLogger(lblNewConsumer)
 
-	// Конфигурация Kafka Reader
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:     cfg.KafkaPort,          // Список брокеров
 		Topic:       cfg.KafkaTopic_01,      // Топик для чтения
@@ -41,22 +45,26 @@ func NewConsumer(cfg *config.Config) *Consumer { // serviceParser *service_parse
 
 	mylogger.Info(fmt.Sprintf("Kafka Consumer создан для топика %s с брокерами %v", cfg.KafkaTopic_01, cfg.KafkaPort))
 	return &Consumer{
-		Reader: reader,
+		Reader:            reader,
+		MetricsPrometheus: metricsPrometheus,
+		AppTGPostParser:   appTGPostParser,
 	}
 }
 
 // Consume читает сообщения из Kafka и передаёт их в service_parser.PostParser.
-func (c *Consumer) Consume(ctx context.Context, cfg *config.Config, sessionStorage *tg_session_storage.FileSessionStorage, producer *producer.Producer, pathSessionJson string) error {
+func (c *Consumer) Consume(ctx context.Context,
+	cfg *config.Config,
+	producer *producer.Producer) error {
+
 	const lblConsume = "tg_app_micserv/internal/kafka/consumer/consumer.go/Consume()"
 	myLogger := logger.NewColorLogger(lblConsume)
 	myLogger.Info("Подписались на топик Kafaka: \"tgbot-tgapp\"")
 
-	for {
-		// Создаем новый клиент для каждой итерации
-		tgClient := tg_init_parser.NewClient(cfg, sessionStorage, pathSessionJson)
-		myLogger.Info("Успешно создали tg клиента")
-		serviceParser := service_parser.NewServiceParser(tgClient)
+	// tgClient := tg_init_parser.NewClient(cfg, sessionStorage, pathSessionJson)
+	// myLogger.Info("Успешно создали tg клиента")
+	// serviceParser := service_parser.NewServiceParser(tgClient)
 
+	for {
 		// Читаем сообщение из Kafka
 		msg, err := c.Reader.ReadMessage(ctx)
 		if err != nil {
@@ -71,55 +79,49 @@ func (c *Consumer) Consume(ctx context.Context, cfg *config.Config, sessionStora
 			continue
 		}
 
-		// Форматируем имя канала
-		channelNameForParserFunc := ""
-		if len(messageFromTGB.NameChanel) > 0 && messageFromTGB.NameChanel[0] == '@' {
-			channelNameForParserFunc = messageFromTGB.NameChanel[1:]
-		}
-		const prefix = "https://t.me/"
-		if len(messageFromTGB.NameChanel) > 0 && strings.HasPrefix(messageFromTGB.NameChanel, prefix) {
-			channelNameForParserFunc = strings.TrimPrefix(messageFromTGB.NameChanel, prefix)
-		}
+		// Фиксируем значения для метрик в Prometheus
+		c.MetricsPrometheus.RequestID = messageFromTGB.RequestID
+		c.MetricsPrometheus.ChatID = messageFromTGB.ChatID
+		c.MetricsPrometheus.TimeStartRequest = time.Now()
+
+		// Форматируем имя канала, превращаем ссылку в нужный формат для TG API PARSER
+		channelNameForParserFunc := service_parser.ExtractChannelName(messageFromTGB.NameChanel)
 
 		timePeriod := time.Duration(messageFromTGB.TimePeriod) * time.Hour
 
-		// Передаём данные в service_parser.PostParser
-		textForAudio, err1 := serviceParser.PostParser(ctx, channelNameForParserFunc, timePeriod)
-		if err1 != nil {
-			myLogger.Error(fmt.Sprintf("Ошибка обработки сообщения в PostParser: %v", err1))
+		// Парсим посты из ТГ канала
+		tgPosts, err := c.AppTGPostParser.PostParser(ctx, channelNameForParserFunc, timePeriod)
+		if err != nil {
+			myLogger.Error(err.Error())
+			return err
+		}
+
+		// Форматируем посты в одно сообщение для Google TTS
+		textForAudio, err := service_parser.FormationTextForTTS(tgPosts)
+		if err != nil {
+			myLogger.Error(fmt.Sprintf("Ошибка форматирования текста постов: %v", err))
 			continue // Продолжаем чтение, чтобы не останавливать консьюмер
 		}
 		myLogger.Info(fmt.Sprintf("Длинна мапы (textForAudio) равна: %v", len(textForAudio)))
 		//myLogger.Info(fmt.Sprintf("Содержимое мапы (textForAudio) равно: %s", textForAudio))
 
-		// Проверяем спарсили ли мы текст
-		if len(textForAudio) < 1 || textForAudio == nil {
-			// Новостей за этот период нет
-
-			myLogger.Info("Попали в if → len < 0")
-
+		if len(textForAudio) < 1 || textForAudio == nil { // Если новостей за этот период нет
 			textForUsers := "В телеграм канале: " + channelNameForParserFunc + " постов за указанный период нет."
 
-			request := model_kafka.KafkaRequestForTGBot{
-				ChatID:               messageFromTGB.ChatID,
-				AwaitingChannelInput: messageFromTGB.AwaitingChannelInput,
-				TextForUsers:         textForUsers,
-			}
+			request := model_kafka.InitKafkaRequestForTGBot(messageFromTGB, textForUsers)
 
 			jsonData, err01 := json.Marshal(request)
 			if err01 != nil {
 				myLogger.Error(fmt.Sprintf("Ошибка сериализации JSON: %v", err01))
 			}
 
-			myLogger.Info(fmt.Sprintf("Имя топика cfg.KafkaTopic_03 равно: %s", cfg.KafkaTopic_03))
-
 			err01 = producer.SendMessage(ctx, cfg.KafkaTopic_03, jsonData)
 			if err01 != nil {
 				myLogger.Error(fmt.Sprintf("Не удалось отправить сообщение в Kafka(tgapp-tgbot): %v", err01))
 			}
+			myLogger.Info("Сообщение в Kafka в TG-Bot успешно отправлено")
 
 		} else {
-			// отправляем мапу с текстом дольше в kafka в tgapp-texttospeech
 			request := model_kafka.InitKafkaRequestForTTS(messageFromTGB, textForAudio)
 
 			jsonData, err01 := json.Marshal(request)
@@ -131,13 +133,12 @@ func (c *Consumer) Consume(ctx context.Context, cfg *config.Config, sessionStora
 			if err01 != nil {
 				myLogger.Error(fmt.Sprintf("Не удалось отправить сообщение в Kafka(tgapp-texttospeech): %v", err01))
 			}
-		}
-		myLogger.Info("Сообщение в Kafka успешно отправлено")
+			myLogger.Info("Сообщение в Kafka в TTS успешно отправлено")
 
-		myLogger.Info("Завершение Telegram-клиента")
-		if err02 := tgClient.Close(ctx); err != nil {
-			myLogger.Error("Ошибка при закрытии Telegram-клиента", "error", err02)
+			strChatID := strconv.FormatInt(c.MetricsPrometheus.ChatID, 10)
+			c.MetricsPrometheus.ObserveDuration(c.MetricsPrometheus.RequestID, strChatID, c.MetricsPrometheus.TimeRequestCalculation())
 		}
+
 	}
 }
 
@@ -153,3 +154,14 @@ func (c *Consumer) Close() error {
 	mylogger.Info("Kafka Consumer успешно закрыт")
 	return nil
 }
+
+// Создаем новый клиент для каждой итерации
+// tgClient := tg_init_parser.NewClient(cfg, sessionStorage, pathSessionJson)
+// myLogger.Info("Успешно создали tg клиента")
+
+//serviceParser := service_parser.NewServiceParser(tgClient)
+
+// myLogger.Info("Завершение Telegram-клиента")
+// if err02 := tgClient.Close(ctx); err != nil {
+//	myLogger.Error("Ошибка при закрытии Telegram-клиента", "error", err02)
+// }

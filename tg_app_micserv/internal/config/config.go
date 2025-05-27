@@ -13,7 +13,7 @@ type Config struct {
 	API_Hash       string
 	Phone          string
 	Two_F_Password string
-	Port           string
+	ServerPort     string
 	KafkaPort      []string
 	KafkaTopic_01  string
 	KafkaTopic_02  string
@@ -46,9 +46,9 @@ func Load() (*Config, error) {
 		return nil, errors.New("TELEGRAM_PASSWORD не указан")
 	}
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		return nil, errors.New("PORT не указан")
+	serverPort := os.Getenv("SERVER_PORT")
+	if serverPort == "" {
+		return nil, errors.New("SERVER_PORT не указан")
 	}
 
 	kafkaPort := make([]string, 0)
@@ -85,7 +85,7 @@ func Load() (*Config, error) {
 		API_Hash:       apiHash,
 		Phone:          phone,
 		Two_F_Password: password,
-		Port:           port,
+		ServerPort:     serverPort,
 		KafkaPort:      kafkaPort,
 		KafkaTopic_01:  kafkaTopic_01,
 		KafkaTopic_02:  kafkaTopic_02,
