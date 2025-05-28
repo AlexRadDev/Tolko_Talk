@@ -6,7 +6,6 @@ import (
 	"os"
 )
 
-// Структура Config содержит конфигурационные параметры
 type Config struct {
 	ServerPort            string
 	GoogleCredentialsFile string
@@ -29,7 +28,6 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("GOOGLE_CREDENTIALS_FILE не указан")
 	}
 
-	// Получаем адрес брокера Kafka
 	kafkaPort := make([]string, 0)
 	kafkaPort = append(kafkaPort, os.Getenv("KAFKA_PORT_01"))
 	if kafkaPort[0] == "" {
@@ -44,7 +42,6 @@ func Load() (*Config, error) {
 		return nil, errors.New("KAFKA_PORT_03 не указан")
 	}
 
-	// Получаем Имя топика продюсера
 	topicConsum := os.Getenv("NAME_TOPIC_01")
 	if topicConsum == "" {
 		return nil, errors.New("NAME_TOPIC_01 не указан")
@@ -54,8 +51,7 @@ func Load() (*Config, error) {
 	if topicProdus == "" {
 		return nil, errors.New("NAME_TOPIC_02 не указан")
 	}
-
-	// Получаем идентификатор группы консьюмеров Kafka
+	
 	kafkaGroupID := os.Getenv("KAFKA_GROUP_ID")
 	if kafkaGroupID == "" {
 		return nil, fmt.Errorf("KAFKA_GROUP_ID не указан")

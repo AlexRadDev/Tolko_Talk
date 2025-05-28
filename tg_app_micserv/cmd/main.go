@@ -6,7 +6,6 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -26,13 +25,13 @@ import (
 
 const (
 	pathEnv         = ".env"
-	lbl             = "tg_app_micserv/cmd/main.go/main()"
+	lbl             = "[myMicro] tg_app_micserv/cmd/main()"
 	pathSessionJson = "/app/session.json" // "/app/session.json" - адрес внутри контейнера. (session.json - адрес тут)
 )
 
 func main() {
 	mylogger := logger.NewColorLogger(lbl)
-	slog.SetDefault(mylogger)
+	//slog.SetDefault(mylogger)
 
 	//region Загрузка файла конфига .env
 	//err := godotenv.Load(pathEnv)
@@ -49,45 +48,44 @@ func main() {
 	// Создание объекта конфига
 	cfg, err := config.Load()
 	if err != nil {
-		slog.Error("Не удалось загрузить конфиг", "error", err)
+		mylogger.Error(fmt.Sprintf("Не удалось загрузить конфиг: %v", err))
 		log.Fatal(err)
 	}
-	slog.Info("Успешно создали объект конфига")
+	mylogger.Info("Успешно создали объект конфига")
 
 	// Создание хранилища сессии Telegram-клиента (локальный файл session.json)
 	sessionStorage := tg_app_session_storage.NewFileSessionStorage(pathSessionJson)
-	slog.Info("Успешно создали объект хранилища сессии")
+	mylogger.Info("Успешно создали объект хранилища сессии")
 
 	appTGPostParser := tg_app_init.NewTGAppClient(cfg, sessionStorage, pathSessionJson)
-	slog.Info("Успешно создали tg app клиента")
+	mylogger.Info("Успешно создали tg app клиента")
+
 	ctx, cancel := context.WithCancel(context.Background())
 	go func() {
 		if err := appTGPostParser.Start(ctx, cfg.Phone, cfg.Two_F_Password); err != nil {
-			slog.Error("Ошибка при запуске Telegram-клиента", "error", err)
+			mylogger.Error(fmt.Sprintf("Ошибка при запуске Telegram-клиента^ %v", err))
 			log.Fatal(err)
 		}
 	}()
-	slog.Info("Успешно запустили tg app клиента")
+	mylogger.Info("Успешно запустили tg app клиента")
 
 	// Создание kafka Producer-а
 	kafkaProducer := producer.NewProducer(cfg)
 	defer func() {
 		if err := kafkaProducer.Close(); err != nil {
-			slog.Error("Ошибка при закрытии Kafka-Producer", "error", err)
+			mylogger.Error(fmt.Sprintf("Ошибка при закрытии Kafka-Producer: %v", err))
 		}
 	}()
-	slog.Info("Успешно создали kafka Producer-а")
+	mylogger.Info("Успешно создали kafka Producer-а")
 
 	// Создание kafka Consumer-а
 	kafkaConsumer := consumer.NewConsumer(cfg, metricsPrometheus, appTGPostParser)
 	defer func() {
 		if err := kafkaConsumer.Close(); err != nil {
-			slog.Error("Ошибка при закрытии Kafka-Consumer", "error", err)
+			mylogger.Error(fmt.Sprintf("Ошибка при закрытии Kafka-Consumer: %v", err))
 		}
 	}()
-	slog.Info("Успешно создали kafka Consumer-а")
-
-	//ctx, cancel := context.WithCancel(context.Background())
+	mylogger.Info("Успешно создали kafka Consumer-а")
 
 	go func() {
 		if err := kafkaConsumer.Consume(ctx, cfg, kafkaProducer); err != nil {
@@ -108,24 +106,24 @@ func main() {
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("Ошибка при запуске сервера:", err)
+			mylogger.Error(fmt.Sprintf("Ошибка при запуске сервера: %v", err))
 		}
 	}()
-	slog.Info(fmt.Sprintf("Сервер запущен на порту: %v", srv.Addr))
+	mylogger.Info(fmt.Sprintf("Сервер запущен на порту: %v", srv.Addr))
 
 	<-stop
-	slog.Info("Получен сигнал завершения, инициируется мягкая остановка")
+	mylogger.Info("Получен сигнал завершения, инициируется мягкая остановка")
 
 	ctx1, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
 	if err := appTGPostParser.Close(ctx1); err != nil {
-		slog.Error("Ошибка при закрытии Telegram-клиента", "error", err)
+		mylogger.Error(fmt.Sprintf("Ошибка при закрытии Telegram-клиента: %v", err))
 	}
 	// Завершение работы сервера
 	if err := srv.Shutdown(ctx1); err != nil {
-		slog.Error("Ошибка при остановке сервера:", err)
+		mylogger.Error(fmt.Sprintf("Ошибка при остановке сервера: %v", err))
 	}
 
-	slog.Info("Сервер успешно остановлен")
+	mylogger.Info("Сервер успешно остановлен")
 }

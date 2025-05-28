@@ -1,0 +1,109 @@
+# {job="docker-logs"} | json | line_format `{{.log}}`
+# {job="docker-logs"}
+# {job="docker-logs", container_name="tolko_talk-tg-bot-1"}
+# {job="docker-logs", container_name="tolko_talk-tg-bot-1"} != "debug"
+# {job="docker-logs"} |= "tg" | json | line_format "{{.time}} {{.log}}"
+
+server:
+  http_listen_port: 9080
+  grpc_listen_port: 0
+
+positions:
+  filename: /tmp/positions.yaml
+
+clients:
+  - url: http://loki:3100/loki/api/v1/push
+    batchwait: 1s
+    batchsize: 524288  # Ограничение размера батча до 512 КБ
+    backoff_config:
+      min_period: 500ms
+      max_period: 5s
+      max_retries: 10
+
+scrape_configs:
+  - job_name: docker-logs
+    docker_sd_configs:
+      - host: unix:///var/run/docker.sock
+        refresh_interval: 5s
+    relabel_configs:
+      - source_labels: [__meta_docker_container_name]
+        target_label: container_name
+      - source_labels: [__meta_docker_container_label_com_docker_swarm_service_name]
+        target_label: job
+        regex: .*
+        replacement: docker-logs
+      - source_labels: [__meta_docker_container_log_stream]
+        target_label: stream
+      - source_labels: [__meta_docker_container_id]
+        target_label: container_id
+
+    static_configs:
+      - targets:
+          - localhost
+        labels:
+          job: docker-logs
+          __path__: /var/lib/docker/containers/*/*log
+
+    pipeline_stages:
+      - labels:
+          container_name:
+      - output:
+          source: log
+
+
+
+#server:
+#  http_listen_port: 9080
+#  grpc_listen_port: 0
+#
+#positions:
+#  filename: /tmp/positions.yaml
+#
+#clients:
+#  - url: http://loki:3100/loki/api/v1/push
+#
+#scrape_configs:
+#  - job_name: docker-logs
+#    docker_sd_configs:
+#      - host: unix:///var/run/docker.sock
+#    relabel_configs:
+#      - source_labels: [ __meta_docker_container_name ]
+#        regex: "/(.+)"
+#        target_label: container
+#      - source_labels: [ __meta_docker_container_log_stream ]
+#        target_label: stream
+#      - source_labels: [ __meta_docker_container_name ]
+#        regex: "/(.+)"
+#        target_label: job
+
+
+#  - job_name: docker-logs
+#    docker_sd_configs:
+#      - host: unix:///var/run/docker.sock
+#    relabel_configs:
+#      - source_labels: [ __meta_docker_container_name ]
+#        target_label: container_name
+
+    #static_configs:
+    #  - targets:
+    #      - localhost
+    #    labels:
+    #      job: docker-logs
+    #      __path__: /var/lib/docker/containers/*/*log
+
+    #pipeline_stages:
+
+     # - json:
+      #    expressions:
+       #     stream: stream
+        #    attrs: attrs
+         #   tag: attrs.tag
+
+      #- regex:
+       #   expression: (?P<image_name>(?:[^|]*[^|])).(?P<container_name>(?:[^|]*[^|])).(?P<image_id>(?:[^|]*[^|])).(?P<container_id>(?:[^|]*[^|]))
+        #  source: "tag"
+
+      #- labels:
+       #   tag:
+        #  image_name:
+         # container_name:

@@ -5,13 +5,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"strconv"
-	"tg_bot/internal/metrics/metrics_prometheus"
 	"time"
 
 	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"github.com/segmentio/kafka-go"
 
 	"tg_bot/internal/config"
+	"tg_bot/internal/metrics/metrics_prometheus"
 	"tg_bot/internal/metrics/metrics_time"
 	"tg_bot/internal/model/model_kafka"
 	"tg_bot/tools/logger"
@@ -57,7 +57,7 @@ func NewConsumer(cfg *config.Config,
 
 // Consume01 читает сообщения из топика (texttospeech-tgbot) Kafka и передаёт их в service_parser.PostParser.
 func (c *Consumer) Consume01(ctx context.Context, tgBot *tgbotapi.BotAPI) error {
-	const lblConsume = "tg_bot_micserv/internal/kafka/consumer/Consume()"
+	const lblConsume = "[myMicro] tg_bot_micserv/internal/kafka/consumer/Consume()"
 	myLogger := logger.NewColorLogger(lblConsume)
 
 	myLogger.Info("Подписались на топик Kafaka: \"texttospeech-tgbot\"")
@@ -92,15 +92,13 @@ func (c *Consumer) Consume01(ctx context.Context, tgBot *tgbotapi.BotAPI) error 
 			myLogger.Info("Успешно Отправили сообщение в TG Bot")
 		}
 
-		//requestID := strconv.FormatInt(c.MetricsPrometheus.RequestID, 10)
 		myLogger.Info(fmt.Sprintf("requestID перевели в string: %v", kafkaAnswerFromTTS.RequestID))
 
 		chatID := strconv.FormatInt(kafkaAnswerFromTTS.ChatID, 10)
 		myLogger.Info(fmt.Sprintf("chatID перевели в string: %v", chatID))
 
-		// TODO: Потенциальная проблема, надо сравнить тот ли RequestID вернулся
-		// нужно что бы RequestID на входе и на выходе совпадали
-
+		// для подсчета полного времени запроса нужно что бы RequestID на входе и на выходе совпадали, для этого
+		// TODO: Надо сравнивать RequestID на входе и на выходе, для этого нужно сохранять куда то RequestID + time.Now на входе
 		myTime := c.MetricsPrometheus.TimeRequestCalculation()
 		if kafkaAnswerFromTTS.RequestID == strconv.FormatInt(c.MetricsPrometheus.RequestID, 10) {
 			c.MetricsPrometheus.ObserveDuration(kafkaAnswerFromTTS.RequestID, chatID, myTime)
@@ -114,7 +112,7 @@ func (c *Consumer) Consume01(ctx context.Context, tgBot *tgbotapi.BotAPI) error 
 
 // Consume02 читает сообщения из топика (tgbot-tgapp) Kafka и передаёт их в service_parser.PostParser.
 func (c *Consumer) Consume02(ctx context.Context, tgBot *tgbotapi.BotAPI) error {
-	const lblConsume = "tg_bot_micserv/internal/kafka/consumer/consumer.go/Consume()"
+	const lblConsume = "[myMicro] tg_bot_micserv/internal/kafka/consumer/consumer.go/Consume()"
 	myLogger := logger.NewColorLogger(lblConsume)
 
 	myLogger.Info("Подписались на топик Kafaka: \"tgapp-tgbot\"")
@@ -145,7 +143,7 @@ func (c *Consumer) Consume02(ctx context.Context, tgBot *tgbotapi.BotAPI) error 
 
 // Close закрывает Kafka Reader.
 func (c *Consumer) Close() error {
-	const lblClose = "tg_bot_micserv/internal/kafka/consumer/consumer.go/Close()"
+	const lblClose = "[myMicro] tg_bot_micserv/internal/kafka/consumer/Close()"
 	mylogger := logger.NewColorLogger(lblClose)
 
 	if err := c.Reader.Close(); err != nil {

@@ -4,9 +4,12 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
 	"strconv"
 	"strings"
+	"time"
+
+	tgbotapi "github.com/go-telegram-bot-api/telegram-bot-api/v5"
+
 	"tg_bot/internal/kafka/producer"
 	"tg_bot/internal/metrics/metrics_prometheus"
 	"tg_bot/internal/metrics/metrics_time"
@@ -14,7 +17,6 @@ import (
 	"tg_bot/internal/storage/interface_channel_list_storage"
 	"tg_bot/internal/storage/interface_requests_storage"
 	"tg_bot/tools/logger"
-	"time"
 )
 
 // Константы для клавиатур
@@ -83,9 +85,8 @@ func init() {
 	TimePeriodKeyboard.ResizeKeyboard = true
 }
 
-// UseCase содержит бизнес-логику Telegram-бота
 type UseCase struct {
-	logger            *logger.Logger
+	mylogger          *logger.Logger
 	repo              interface_requests_storage.UserRequestRepository
 	kafkaProducer     *producer.Producer
 	storage           interface_channel_list_storage.StorageInterface
@@ -93,16 +94,15 @@ type UseCase struct {
 	MetricsPrometheus *metrics_prometheus.TGBotMetricsPrometheus
 }
 
-const lblname = "tg_bot/internal/tg_bot_user_case" // Метка места для логирования
+const lblname = "[myMicro] tg_bot/internal/tg_bot_user_case" // Метка места для логирования
 
-// NewUseCase создаёт новый экземпляр UseCase
 func NewUseCase(repo interface_requests_storage.UserRequestRepository,
 	kafkaProducer *producer.Producer,
 	storage interface_channel_list_storage.StorageInterface,
 	metricsTime *metrics_time.MetricsTime,
 	metricsPrometheus *metrics_prometheus.TGBotMetricsPrometheus) *UseCase {
 	return &UseCase{
-		logger:            logger.NewColorLogger(lblname),
+		mylogger:          logger.NewColorLogger(lblname),
 		repo:              repo,
 		kafkaProducer:     kafkaProducer,
 		storage:           storage,
@@ -146,7 +146,7 @@ func (uc *UseCase) HandleMessage(ctx context.Context, bot *tgbotapi.BotAPI, chat
 
 // handleStart обрабатывает команду /start
 func (uc *UseCase) handleStart(bot *tgbotapi.BotAPI, chatID int64) error {
-	uc.logger.Info("Обработка команды /start", "chatID", chatID)
+	uc.mylogger.Info(fmt.Sprintf("Обработка команды /start, chatID = %v", chatID))
 	msg := tgbotapi.NewMessage(chatID, "Добро пожаловать! Выберите действие:")
 	msg.ReplyMarkup = MainKeyboard
 	_, err := bot.Send(msg)
@@ -341,18 +341,18 @@ func (uc *UseCase) handleSendRequest(ctx context.Context, bot *tgbotapi.BotAPI, 
 
 	jsonData, err := json.Marshal(request)
 	if err != nil {
-		uc.logger.Error("Ошибка сериализации JSON", "chatID", chatID, "error", err)
+		uc.mylogger.Error("Ошибка сериализации JSON", "chatID", chatID, "error", err)
 		return fmt.Errorf("ошибка сериализации JSON: %w", err)
 	}
 
 	if err := uc.kafkaProducer.SendMessage(ctx, uc.kafkaProducer.Writer.Topic, jsonData); err != nil {
-		uc.logger.Error("Ошибка отправки сообщения в Kafka", "chatID", chatID, "error", err)
+		uc.mylogger.Error("Ошибка отправки сообщения в Kafka", "chatID", chatID, "error", err)
 		msg := tgbotapi.NewMessage(chatID, "Ошибка отправки запроса.\nПожалуйста, попробуйте позже.")
 		bot.Send(msg)
 		return fmt.Errorf("ошибка отправки в Kafka: %w", err)
 	}
 
-	uc.logger.Info("Запрос успешно отправлен в Kafka", "chatID", chatID)
+	uc.mylogger.Info("Запрос успешно отправлен в Kafka", "chatID", chatID)
 	msg := tgbotapi.NewMessage(chatID, fmt.Sprintf(
 		"Ваш запрос отправлен на обработку:\nКанал: %s\nСкорость аудио: %.1fx\nПериод времени: %d ч.\nПожалуйста, дождитесь ответа...",
 		request.NameChanel, request.SpeakingRate, request.TimePeriod,
@@ -404,7 +404,7 @@ func (uc *UseCase) handleDefault(ctx context.Context, bot *tgbotapi.BotAPI, chat
 
 	channelName, channelLink := strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])
 	if err := uc.storage.AddChannel(chatID, channelName, channelLink); err != nil {
-		uc.logger.Error("Ошибка сохранения канала", "chatID", chatID, "channelName", channelName, "error", err)
+		uc.mylogger.Error("Ошибка сохранения канала", "chatID", chatID, "channelName", channelName, "error", err)
 		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Ошибка на сервере, канал %s не сохранён.\nВыберите действие:", channelName))
 		msg.ReplyMarkup = MainKeyboard
 		_, err := bot.Send(msg)
@@ -429,7 +429,7 @@ func (uc *UseCase) handleDefault(ctx context.Context, bot *tgbotapi.BotAPI, chat
 
 // HandleCallback обрабатывает callback-запросы
 func (uc *UseCase) HandleCallback(bot *tgbotapi.BotAPI, chatID int64, callbackData string) error {
-	uc.logger.Info("Получен callback", "chatID", chatID, "callbackData", callbackData)
+	uc.mylogger.Info("Получен callback", "chatID", chatID, "callbackData", callbackData)
 	request := uc.repo.GetRequest(chatID)
 
 	switch {
@@ -443,7 +443,7 @@ func (uc *UseCase) HandleCallback(bot *tgbotapi.BotAPI, chatID int64, callbackDa
 	case strings.HasPrefix(callbackData, "channel_"):
 		parts := strings.SplitN(callbackData[8:], "|", 2)
 		if len(parts) != 2 || strings.TrimSpace(parts[0]) == "" || strings.TrimSpace(parts[1]) == "" {
-			uc.logger.Error("Неверный формат callbackData", "callbackData", callbackData)
+			uc.mylogger.Error("Неверный формат callbackData", "callbackData", callbackData)
 			msg := tgbotapi.NewMessage(chatID, "Ошибка: Неверный формат данных канала.\nПожалуйста, проверьте ввод.")
 			_, err := bot.Send(msg)
 			if err != nil {
@@ -461,18 +461,26 @@ func (uc *UseCase) HandleCallback(bot *tgbotapi.BotAPI, chatID int64, callbackDa
 		}
 	case strings.HasPrefix(callbackData, "delete_channel_"):
 		channelName := strings.TrimSpace(callbackData[15:])
-
-		// TODO: Обработать ошибку удаления канала из списка
-		uc.storage.DeleteChannels(chatID, channelName)
-
-		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Канал %s удалён из избранного.\nВыберите действие:", channelName))
-		msg.ReplyMarkup = MainKeyboard
-		_, err := bot.Send(msg)
+		
+		err := uc.storage.DeleteChannels(chatID, channelName)
 		if err != nil {
-			return fmt.Errorf("ошибка отправки сообщения: %w", err)
+			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Ошибка на сервере.\nКанал %s не удалён из избранного.\nПопробуйте позже.\nВыберите действие:", channelName))
+			msg.ReplyMarkup = MainKeyboard
+			_, err := bot.Send(msg)
+			if err != nil {
+				return fmt.Errorf("ошибка отправки сообщения: %w", err)
+			}
+		} else {
+			msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Канал %s удалён из избранного.\nВыберите действие:", channelName))
+			msg.ReplyMarkup = MainKeyboard
+			_, err := bot.Send(msg)
+			if err != nil {
+				return fmt.Errorf("ошибка отправки сообщения: %w", err)
+			}
 		}
+
 	default:
-		uc.logger.Warn("Получен неизвестный callback", "callbackData", callbackData)
+		uc.mylogger.Warn("Получен неизвестный callback", "callbackData", callbackData)
 		msg := tgbotapi.NewMessage(chatID, fmt.Sprintf("Получен неизвестный callback: %s", callbackData))
 		_, err := bot.Send(msg)
 		if err != nil {

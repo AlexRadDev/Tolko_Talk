@@ -25,7 +25,7 @@ func NewProducer(cfg *config.Config) *Producer {
 		Topic:      cfg.NameTopic01,             // Указываем топик для отправки сообщений по умолчанию
 		Balancer:   &kafka.LeastBytes{},         // Используем балансировку по ключу для равномерного распределения сообщений
 		Async:      true,                        // Включаем асинхронную отправку сообщений
-		BatchBytes: 5 * 1024 * 1024,             // 5 MB
+		BatchBytes: 10 * 1024 * 1024,            // 10 MB
 	}
 
 	return &Producer{Writer: writer}
@@ -33,7 +33,7 @@ func NewProducer(cfg *config.Config) *Producer {
 
 // SendMessage отправляет сообщение в топик Kafka.
 func (p *Producer) SendMessage(ctx context.Context, nameTopic string, data []byte) error {
-	const lblSendMessage = "tg_bot_micserv/internal/kafka/producer.go/SendMessage()"
+	const lblSendMessage = "[myMicro] tg_bot_micserv/internal/kafka/producer/SendMessage()"
 	myLogger := logger.NewColorLogger(lblSendMessage)
 
 	// Проверяем, существует ли топик в кластере Kafka и создаем если нет
@@ -58,7 +58,7 @@ func (p *Producer) SendMessage(ctx context.Context, nameTopic string, data []byt
 
 // CheckingAndCreatingTopics проверяет, существует ли топик в кластере Kafka и создает если нет.
 func (p *Producer) CheckingAndCreatingTopics(ctx context.Context, nameTopic string) error {
-	const lbltopicExists = "tg_bot_micserv/internal/kafka/producer.go/CheckingAndCreatingTopics()"
+	const lbltopicExists = "[myMicro] tg_bot_micserv/internal/kafka/producer/CheckingAndCreatingTopics()"
 	myLogger := logger.NewColorLogger(lbltopicExists)
 
 	// Проверка существования топика
@@ -84,7 +84,7 @@ func (p *Producer) CheckingAndCreatingTopics(ctx context.Context, nameTopic stri
 
 // topicExists проверяет, существует ли топик в кластере Kafka.
 func (p *Producer) topicExists(ctx context.Context, topic string) (bool, error) {
-	const lbltopicExists = "tg_bot_micserv/internal/kafka/producer.go/topicExists()"
+	const lbltopicExists = "[myMicro] tg_bot_micserv/internal/kafka/producer/topicExists()"
 	myLogger := logger.NewColorLogger(lbltopicExists)
 
 	// Получаем соединение с контроллером
@@ -112,7 +112,7 @@ func (p *Producer) topicExists(ctx context.Context, topic string) (bool, error) 
 
 // CreateTopic создаёт новый топик, с заданной конфигурацией.
 func (p *Producer) CreateTopic(ctx context.Context, topic string) error {
-	const lblcreateTopic = "tg_bot_micserv/internal/kafka/producer.go/CreateTopic()"
+	const lblcreateTopic = "[myMicro] tg_bot_micserv/internal/kafka/producer/CreateTopic()"
 	myLogger := logger.NewColorLogger(lblcreateTopic)
 
 	// Получаем соединение с контроллером
@@ -148,14 +148,12 @@ func (p *Producer) CreateTopic(ctx context.Context, topic string) error {
 	// Проверяем, что топик создан
 	exists, err := p.topicExists(ctx, topic)
 	if err != nil {
-		myLogger.Error(fmt.Sprintf("Ошибка проверки топика после создания: %v", err))
+		myLogger.Error(fmt.Sprintf("Ошибка проверки существования топика после создания: %v", err))
 		return fmt.Errorf("проверка топика после создания: %w", err)
 	}
 	if !exists {
-		myLogger.Error("Топик не был создан, хотя ошибок не было")
 		return fmt.Errorf("топик %s не был создан", topic)
 	}
-
 	myLogger.Info(fmt.Sprintf("Топик %s успешно создан", topic))
 
 	return nil
@@ -163,7 +161,7 @@ func (p *Producer) CreateTopic(ctx context.Context, topic string) error {
 
 // getControllerConn устанавливает соединение с контроллером Kafka
 func (p *Producer) getControllerConn(ctx context.Context) (*kafka.Conn, error) {
-	const lbl = "tg_bot_micserv/internal/kafka/producer.go/getControllerConn()"
+	const lbl = "[myMicro] tg_bot_micserv/internal/kafka/producer/getControllerConn()"
 	myLogger := logger.NewColorLogger(lbl)
 
 	// Подключаемся к Kafka
@@ -191,7 +189,7 @@ func (p *Producer) getControllerConn(ctx context.Context) (*kafka.Conn, error) {
 		myLogger.Error(fmt.Sprintf("Не удалось подключиться к контроллеру: %v", err))
 		return nil, fmt.Errorf("подключение к контроллеру: %w", err)
 	}
-	// Закрываем первое соединение, так как оно больше не нужно
+
 	conn.Close()
 
 	return ctrlConn, nil
@@ -199,7 +197,7 @@ func (p *Producer) getControllerConn(ctx context.Context) (*kafka.Conn, error) {
 
 // Close закрывает соединение с Kafka
 func (p *Producer) Close() error {
-	const lbl = "tg_bot_micserv/internal/kafka/producer.go/Close()"
+	const lbl = "[myMicro] tg_bot_micserv/internal/kafka/producer/Close()"
 	myLogger := logger.NewColorLogger(lbl)
 
 	err := p.Writer.Close()

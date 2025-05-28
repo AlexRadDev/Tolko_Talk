@@ -7,7 +7,6 @@ import (
 	"strconv"
 )
 
-// Config содержит конфиг микросервиса
 type Config struct {
 	API_ID         int
 	API_Hash       string
@@ -18,6 +17,7 @@ type Config struct {
 	KafkaTopic_01  string
 	KafkaTopic_02  string
 	KafkaTopic_03  string
+	WorkerPoolSize string
 }
 
 // Load загружает данные из переменных среды
@@ -80,6 +80,11 @@ func Load() (*Config, error) {
 		return nil, errors.New("KAFKA_TOPIC_03 не указан")
 	}
 
+	workerPoolSize := os.Getenv("WORKER_POOL_SIZE")
+	if kafkaTopic_03 == "" {
+		return nil, errors.New("KAFKA_TOPIC_03 не указан")
+	}
+
 	return &Config{
 		API_ID:         apiID,
 		API_Hash:       apiHash,
@@ -90,5 +95,6 @@ func Load() (*Config, error) {
 		KafkaTopic_01:  kafkaTopic_01,
 		KafkaTopic_02:  kafkaTopic_02,
 		KafkaTopic_03:  kafkaTopic_03,
+		WorkerPoolSize: workerPoolSize,
 	}, nil
 }

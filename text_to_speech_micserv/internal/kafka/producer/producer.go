@@ -13,27 +13,24 @@ import (
 	"text_to_speech_app/tools/logger"
 )
 
-// Структура Producer содержит Kafka-продюсер
 type Producer struct {
 	Writer *kafka.Writer
 }
 
-// NewProducer создаёт новый Kafka-продюсер
 func NewProducer(cfg *config.Config) *Producer { // (portKafka string, nameTopicKafka string)
 	writer := &kafka.Writer{
 		Addr:       kafka.TCP(cfg.KafkaPort[0]), // Указываем адреса брокеров Kafka
 		Topic:      cfg.TopicProdus,             // Указываем топик для отправки сообщений
 		Balancer:   &kafka.LeastBytes{},         // Используем балансировку по ключу для равномерного распределения сообщений
 		Async:      true,                        // Включаем асинхронную отправку сообщений
-		BatchBytes: 5 * 1024 * 1024,             // 5 MB
+		BatchBytes: 20 * 1024 * 1024,            // 20 MB
 	}
 
 	return &Producer{Writer: writer}
 }
 
-// SendMessage отправляет сообщение в Kafka
 func (p *Producer) SendMessage(ctx context.Context, nameTopic string, data []byte) error {
-	const lblSendMessage = "internal/kafka/producer/producer.go/SendMessage()"
+	const lblSendMessage = "[myMicro] internal/kafka/producer/SendMessage()"
 	myLogger := logger.NewColorLogger(lblSendMessage)
 
 	// Проверка существования топика
@@ -55,7 +52,7 @@ func (p *Producer) SendMessage(ctx context.Context, nameTopic string, data []byt
 	}
 
 	msg := kafka.Message{
-		Value: data, // Передаём сериализованные данные
+		Value: data,
 	}
 	myLogger.Info(fmt.Sprintf("Размер аудио, отправляемого сообщения равен: %v Мб", float64(len(data))/(1024*1024)))
 
@@ -100,12 +97,13 @@ func (p *Producer) topicExists(ctx context.Context, topic string) (bool, error) 
 
 // createTopic создаёт новый топик с заданной конфигурацией.
 func (p *Producer) createTopic(ctx context.Context, topic string) error {
-	const lblcreateTopic = "internal/kafka/producer/topicExists()"
+	const lblcreateTopic = "[myMicro] internal/kafka/producer/topicExists()"
 	myLogger := logger.NewColorLogger(lblcreateTopic)
 
 	// Получаем соединение с контроллером
 	ctrlConn, err := p.getControllerConn(ctx)
 	if err != nil {
+		myLogger.Error(fmt.Sprintf("Ошибка соединения с Kafka контроллером: %v", err))
 		return err
 	}
 	defer ctrlConn.Close()
@@ -127,7 +125,7 @@ func (p *Producer) createTopic(ctx context.Context, topic string) error {
 	err = ctrlConn.CreateTopics(topicConfig)
 	if err != nil {
 		myLogger.Error(fmt.Sprintf("Ошибка создания топика: %v", err))
-		return fmt.Errorf("создание топика %s: %w", topic, err)
+		return fmt.Errorf("Ошибка создания топика: %s, %w", topic, err)
 	}
 
 	time.Sleep(3 * time.Second)
@@ -137,7 +135,7 @@ func (p *Producer) createTopic(ctx context.Context, topic string) error {
 
 // getControllerConn устанавливает соединение с контроллером Kafka
 func (p *Producer) getControllerConn(ctx context.Context) (*kafka.Conn, error) {
-	const lblgetCont = "internal/kafka/producer/getControllerConn()"
+	const lblgetCont = "i[myMicro] nternal/kafka/producer/getControllerConn()"
 	myLogger := logger.NewColorLogger(lblgetCont)
 
 	// Подключаемся к Kafka
@@ -173,7 +171,7 @@ func (p *Producer) getControllerConn(ctx context.Context) (*kafka.Conn, error) {
 
 // Close закрывает соединение с Kafka
 func (p *Producer) Close() error {
-	const lblClose = "internal/kafka/producer/Close()"
+	const lblClose = "[myMicro] internal/kafka/producer/Close()"
 	myLogger := logger.NewColorLogger(lblClose)
 
 	err := p.Writer.Close()

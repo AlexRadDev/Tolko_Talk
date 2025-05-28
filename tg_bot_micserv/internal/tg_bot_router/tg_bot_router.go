@@ -27,10 +27,9 @@ func NewRouter(tgBot *tgbotapi.BotAPI, tgBotUserCase *tg_bot_user_case.UseCase) 
 func (r *Router) HandleUpdate(w http.ResponseWriter, req *http.Request) {
 	ctx := req.Context()
 
-	const lblHandleUpdate = "tg_bot_micserv/internal/tg_bot_router/tg_bot_router.go/HandleUpdate()"
+	const lblHandleUpdate = "[myMicro] tg_bot_micserv/internal/tg_bot_router/HandleUpdate()"
 	myLogger := logger.NewColorLogger(lblHandleUpdate)
 
-	// Создаём структуру для хранения обновления
 	var update tgbotapi.Update
 	if err := json.NewDecoder(req.Body).Decode(&update); err != nil {
 		http.Error(w, "bad request", http.StatusBadRequest)
@@ -39,7 +38,6 @@ func (r *Router) HandleUpdate(w http.ResponseWriter, req *http.Request) {
 	myLogger.Info("Успешно декодировали JSON из тела запроса")
 
 	if update.Message != nil {
-		//updateType = "message"
 		err := r.tgBotUserCase.HandleMessage(ctx, r.tgBot, update.Message.Chat.ID, update.Message.Text)
 		if err != nil {
 			myLogger.Error(fmt.Sprintf("Ошибка обработки запроса в HandleMessage: %v", err))
@@ -53,18 +51,15 @@ func (r *Router) HandleUpdate(w http.ResponseWriter, req *http.Request) {
 func (r *Router) ProcessUpdate(update tgbotapi.Update) {
 	ctx := context.Background()
 
-	const lblProcessUpdate = "tg_bot_micserv/internal/tg_bot_router/tg_bot_router.go/ProcessUpdate()"
+	const lblProcessUpdate = "[myMicro] tg_bot_micserv/internal/tg_bot_router/ProcessUpdate()"
 	myLogger := logger.NewColorLogger(lblProcessUpdate)
 
-	// Обработка обычных сообщений
 	if update.Message != nil {
-		//updateType = "message"
 		err := r.tgBotUserCase.HandleMessage(ctx, r.tgBot, update.Message.Chat.ID, update.Message.Text)
 		if err != nil {
 			myLogger.Error(fmt.Sprintf("Ошибка обработки запроса в HandleMessage: %v", err))
 		}
 		myLogger.Info("Успешно обработали сообщение")
-
 		return
 	}
 

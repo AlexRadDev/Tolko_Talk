@@ -21,7 +21,7 @@ type Server struct {
 
 // NewServer создаёт новый экземпляр сервера
 func NewServer(cfg *config.Config, handler http.Handler) *Server {
-	const lblServer = "internal/server/server.go/NewServer()"
+	const lblServer = "[myMicro] internal/server"
 	myLogger := logger.NewColorLogger(lblServer)
 
 	srv := &http.Server{

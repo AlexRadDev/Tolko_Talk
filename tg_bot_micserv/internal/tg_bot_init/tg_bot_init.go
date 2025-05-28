@@ -10,7 +10,7 @@ import (
 
 // NewBot создаёт новый Telegram-бот
 func NewBot(token string) (*tgbotapi.BotAPI, error) {
-	const lblNewBot = "tg_bot_micserv/internal/tg_bot_init/tg_bot_init.go/NewBot()"
+	const lblNewBot = "[myMicro] tg_bot_micserv/internal/tg_bot_init/NewBot()"
 	myLogger := logger.NewColorLogger(lblNewBot)
 
 	// Создаём новый бот с токеном
@@ -27,7 +27,7 @@ func NewBot(token string) (*tgbotapi.BotAPI, error) {
 
 // SetupLongPolling настраивает и возвращает канал обновлений для Long Polling
 func SetupLongPolling(bot *tgbotapi.BotAPI) tgbotapi.UpdatesChannel {
-	const lblSetupLP = "tg_bot_micserv/internal/tg_bot_init/tg_bot_init.go/SetupLongPolling()"
+	const lblSetupLP = "[myMicro] tg_bot_micserv/internal/tg_bot_init/SetupLongPolling()"
 	myLogger := logger.NewColorLogger(lblSetupLP)
 
 	// Настраиваем получение обновлений

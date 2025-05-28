@@ -4,18 +4,16 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"log/slog"
 	"net/http"
 	"os"
-	"tg_bot/internal/metrics/metrics_prometheus"
 	"time"
 
-	//"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"tg_bot/internal/config"
 	"tg_bot/internal/kafka/consumer"
 	"tg_bot/internal/kafka/producer"
+	"tg_bot/internal/metrics/metrics_prometheus"
 	"tg_bot/internal/metrics/metrics_time"
 	"tg_bot/internal/server"
 	"tg_bot/internal/storage/interface_channel_list_storage"
@@ -33,8 +31,7 @@ const (
 )
 
 func main() {
-	// Создание логгера с меткой
-	const lblmain = "cmd/main.go/main()"
+	const lblmain = "[myMicro] cmd/main.go/main()"
 	myLoggeg := logger.NewColorLogger(lblmain)
 	//slog.SetDefault(myLoggeg)
 
@@ -50,7 +47,7 @@ func main() {
 	// Создание конфига
 	cfg, err := config.Load()
 	if err != nil {
-		slog.Error("Ошибка загрузки конфигурации", "error", err)
+		myLoggeg.Error(fmt.Sprintf("Ошибка загрузки конфигурации: %v", err))
 		os.Exit(1)
 	}
 	myLoggeg.Info("Успешно создали объект кофига")
@@ -61,10 +58,10 @@ func main() {
 	// Создание Telegram-бота
 	tgBot, err := tg_bot_init.NewBot(cfg.TGBotToken)
 	if err != nil {
-		myLoggeg.Error("Ошибка инициализации Telegram-бота", "error", err)
+		myLoggeg.Error(fmt.Sprintf("Ошибка инициализации Telegram-бота: %v", err))
 		os.Exit(1)
 	}
-	slog.Info(fmt.Sprintf("Бот авторизован как @%s", tgBot.Self.UserName))
+	myLoggeg.Info(fmt.Sprintf("Бот авторизован как @%s", tgBot.Self.UserName))
 
 	// Создание хранилища для состояния запросов пользователей
 	storageReqUsers := map_requests_storage.NewRepoUserRequests()
@@ -79,7 +76,7 @@ func main() {
 	kafkaProducer := producer.NewProducer(cfg)
 	defer func() {
 		if err := kafkaProducer.Close(); err != nil {
-			myLoggeg.Error("Ошибка при закрытии Kafka-продюсера", "error", err)
+			myLoggeg.Error(fmt.Sprintf("Ошибка при закрытии Kafka-продюсера: %v", err))
 		} else {
 			myLoggeg.Info("Kafka-продюсер успешно закрыт")
 		}
@@ -90,7 +87,7 @@ func main() {
 	for _, nameTopic := range cfg.KafkaTopicSlise {
 		err := kafkaProducer.CheckingAndCreatingTopics(ctx, nameTopic)
 		if err != nil {
-			myLoggeg.Error("Ошибка при создании топиков в Kafka", "error", err)
+			myLoggeg.Error(fmt.Sprintf("Ошибка при создании топиков в Kafka: %v", err))
 		}
 	}
 
@@ -98,7 +95,7 @@ func main() {
 	kafkaConsumer01 := consumer.NewConsumer(cfg, 1, metricsTime, metricsPrometheus)
 	defer func() {
 		if err := kafkaConsumer01.Close(); err != nil {
-			myLoggeg.Error("Ошибка при закрытии Kafka-консьюмера 01", "error", err)
+			myLoggeg.Error(fmt.Sprintf("Ошибка при закрытии Kafka-консьюмера 01: %v", err))
 		} else {
 			myLoggeg.Info("Kafka-консьюмер 01 успешно закрыт")
 		}
@@ -107,22 +104,22 @@ func main() {
 	// Запуск консьюмера 01
 	go func() {
 		if err := kafkaConsumer01.Consume01(ctx, tgBot); err != nil {
+			myLoggeg.Error(fmt.Sprintf("Ошибка в работе консьюмера 01: %v", err))
 			log.Fatalf("Ошибка в работе консьюмера 01: %v", err)
 		}
 	}()
-	// Создание Kafka-консьюмера 02
 	kafkaConsumer02 := consumer.NewConsumer(cfg, 2, metricsTime, metricsPrometheus)
 	defer func() {
 		if err := kafkaConsumer02.Close(); err != nil {
-			myLoggeg.Error("Ошибка при закрытии Kafka-консьюмера 02", "error", err)
+			myLoggeg.Error(fmt.Sprintf("Ошибка при закрытии Kafka-консьюмера 02: %v", err))
 		} else {
 			myLoggeg.Info("Kafka-консьюмер 02 успешно закрыт")
 		}
 	}()
 	myLoggeg.Info("Успешно создали kafka Consumer-а 02 (tg_app → tg_bot)")
-	// Запуск консьюмера 02
 	go func() {
 		if err := kafkaConsumer02.Consume02(ctx, tgBot); err != nil {
+			myLoggeg.Error(fmt.Sprintf("Ошибка в работе консьюмера 02: %v", err))
 			log.Fatalf("Ошибка в работе консьюмера 02: %v", err)
 		}
 	}()
@@ -131,7 +128,7 @@ func main() {
 	// Создание подключения к БД
 	postgresStorage, err := postgres_channel_list_storage.NewPostgresStorage(cfg)
 	if err != nil {
-		myLoggeg.Error("Ошибка подключения к бд Postgres", "error", err)
+		myLoggeg.Error(fmt.Sprintf("Ошибка подключения к бд Postgres: %v", err))
 		log.Fatalf("Ошибка подключения к бд Postgres: %v", err)
 	}
 	defer postgresStorage.Close()

@@ -1,49 +1,19 @@
-// Логика работы с текстом сообщений
-
 package service_parser
 
 import (
-	//"context"
-	tg_post_model "tg_app_micserv/internal/model"
-
-	//"fmt"
 	"regexp"
 	"strings"
-	//"tg_app_micserv/internal/kafka/producer"
-	//"time"
 	"unicode/utf8"
-	//"tg_app_micserv/internal/model/interfaces"
-	//"tg_app_micserv/tools/logger"
+
+	tg_post_model "tg_app_micserv/internal/model"
 )
 
-// ServiceParser организует получение и очистку сообщений
-//type ServiceParserSTR struct {
-//	parser     interfaces.ServiceParser // Интерфейс для получения сообщений
-//	producer   producer.MessageProducer // Интерфейс для отправки в Kafka
-//	formatText interfaces.TextCleaner   // Интерфейс для очистки текста
-//}
-
-// NewMessageService создает новый ServiceParser
-//func NewServiceParser(parser interfaces.ServiceParser) *ServiceParser {
-//	return &ServiceParser{
-//		parser: parser,
-//	}
-//}
-
 func FormationTextForTTS(messages []tg_post_model.Message) (map[int64]string, error) {
-	//const lbl = "tg_app_micserv/internal/service_parser/service_parser.go/ServiceParser()"
-	//mylogger := logger.NewColorLogger(lbl)
-
-	// Создаем карту для хранения обработанных сообщений
 	messageMap := make(map[int64]string, 0)
-
-	// Обрабатываем каждое сообщение
 	for _, msg := range messages {
-		// Очищаем текст сообщения
-		cleanedText := FormatText(msg.Text)
+		cleanedText := FormatText(msg.Text) // Очищаем текст сообщения
 		if cleanedText != "" {
-			// Используем временную метку как ключ
-			messageMap[msg.Timestamp.Unix()] = cleanedText
+			messageMap[msg.Timestamp.Unix()] = cleanedText // Используем временную метку как ключ
 		}
 	}
 
@@ -52,7 +22,6 @@ func FormationTextForTTS(messages []tg_post_model.Message) (map[int64]string, er
 
 // FormatText очищает и форматирует текст постов
 func FormatText(input string) string {
-	// Удаление временных меток и дат через регулярки
 	timePatterns := []*regexp.Regexp{
 		// regexp.MustCompile(`\b\d{1,2}:\d{2}(:\d{2})?\b`),               // 12:34 или 14:20:59
 		regexp.MustCompile(`\b\d{1,2}[./-]\d{1,2}[./-]\d{2,4}\b`),      // 09.05.2025, 9-5-25
@@ -98,7 +67,7 @@ func FormatText(input string) string {
 	return result
 }
 
-// ExtractChannelName Форматируем имя канала, превращаем ссылку в нужный формат для TG API PARSER
+// ExtractChannelName Форматируем имя канала, превращает ссылку в нужный формат для TG API PARSER
 func ExtractChannelName(input string) string {
 	if strings.HasPrefix(input, "@") {
 		return input[1:]

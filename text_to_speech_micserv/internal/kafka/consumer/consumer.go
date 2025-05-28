@@ -17,7 +17,6 @@ import (
 	"text_to_speech_app/tools/logger"
 )
 
-// Consumer представляет Kafka-консьюмер.
 type Consumer struct {
 	Reader            *kafka.Reader
 	Producer          *producer.Producer
@@ -25,12 +24,10 @@ type Consumer struct {
 	MetricsPrometheus *metrics_prometheus.TGBotMetricsPrometheus
 }
 
-// NewConsumer создаёт новый экземпляр Kafka-консьюмера.
 func NewConsumer(cfg *config.Config, producerKafka *producer.Producer,
 	interfaceTextToAudio interface_text_to_audio.InterfaceTextToAudio,
-	metricsPrometheus *metrics_prometheus.TGBotMetricsPrometheus) *Consumer { // serviceParser *service_parser.ServiceParser
+	metricsPrometheus *metrics_prometheus.TGBotMetricsPrometheus) *Consumer {
 
-	// Конфигурация Kafka Reader
 	reader := kafka.NewReader(kafka.ReaderConfig{
 		Brokers:     cfg.KafkaPort,          // Список брокеров
 		Topic:       cfg.TopicConsum,        // Топик для чтения
@@ -49,20 +46,18 @@ func NewConsumer(cfg *config.Config, producerKafka *producer.Producer,
 	}
 }
 
-// Consume читает сообщения из Kafka и передаёт их в service_parser.PostParser.
 func (c *Consumer) Consume(ctx context.Context, cfg *config.Config) error {
-	const lblConsume = "text_to_speech_micserv/internal/kafka/consumer/Consume()"
+	const lblConsume = "[myMicro] text_to_speech_micserv/internal/kafka/consumer/Consume()"
 	myLogger := logger.NewColorLogger(lblConsume)
 	myLogger.Info("Подписались на топик Kafaka: \"tgapp-texttospeech\"")
 
 	for {
-		// Читаем сообщение из Kafka
 		msg, err := c.Reader.ReadMessage(ctx)
 		if err != nil {
 			myLogger.Error(fmt.Sprintf("Ошибка чтения сообщения из Kafka: %v", err))
 			return fmt.Errorf("чтение сообщения: %w", err)
 		}
-		myLogger.Info(fmt.Sprintf("Получено сообщение из топика %s: %s", msg.Topic, string(msg.Value)))
+		//myLogger.Info(fmt.Sprintf("Получено сообщение из топика %s: %s", msg.Topic, string(msg.Value)))
 
 		var messageFromTGAPP *model_kafka.KafkaMessageFromTGAPP
 
@@ -76,6 +71,7 @@ func (c *Consumer) Consume(ctx context.Context, cfg *config.Config) error {
 		c.MetricsPrometheus.ChatID = messageFromTGAPP.ChatID
 		c.MetricsPrometheus.TimeStartRequest = time.Now()
 
+		// Отправляем в google tts
 		responseForTGAPP, err1 := c.TextToAudio.Synthesize(ctx, messageFromTGAPP)
 		if err1 != nil {
 			myLogger.Error(fmt.Sprintf("Ошибка обработки сообщения в PostParser: %v", err1))
@@ -102,7 +98,7 @@ func (c *Consumer) Consume(ctx context.Context, cfg *config.Config) error {
 
 // Close закрывает Kafka Reader.
 func (c *Consumer) Close() error {
-	const lblClose = "text_to_speech_micserv/internal/kafka/consumer/Close()"
+	const lblClose = "[myMicro] text_to_speech_micserv/internal/kafka/consumer/Close()"
 	mylogger := logger.NewColorLogger(lblClose)
 
 	if err := c.Reader.Close(); err != nil {

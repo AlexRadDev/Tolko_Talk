@@ -18,7 +18,7 @@ type PostgresStorage struct {
 
 // NewPostgresStorage создает новое подключение к PostgreSQL
 func NewPostgresStorage(cfg *config.Config) (*PostgresStorage, error) {
-	const lblConsume = "tg_bot_micserv/internal/storage/postgres_channel_list_storage/NewPostgresStorage()"
+	const lblConsume = "[myMicro] tg_bot_micserv/internal/storage/postgres_channel_list_storage/NewPostgresStorage()"
 	myLogger := logger.NewColorLogger(lblConsume)
 
 	dsn := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
@@ -47,7 +47,7 @@ func (p *PostgresStorage) Close() error {
 
 // AddChannel добавляет канал для чата
 func (p *PostgresStorage) AddChannel(chatID int64, nameChannel, linkChannel string) error {
-	const lblConsume = "tg_bot_micserv/internal/storage/postgres_channel_list_storage/AddChannel()"
+	const lblConsume = "[myMicro] tg_bot_micserv/internal/storage/postgres_channel_list_storage/AddChannel()"
 	myLogger := logger.NewColorLogger(lblConsume)
 
 	query := `
@@ -71,7 +71,7 @@ func (p *PostgresStorage) AddChannel(chatID int64, nameChannel, linkChannel stri
 
 // GetChannels получает все каналы для чата
 func (p *PostgresStorage) GetChannels(chatID int64) map[string]string {
-	const lblConsume = "tg_bot_micserv/internal/storage/postgres_channel_list_storage/GetChannels()"
+	const lblConsume = "[myMicro] tg_bot_micserv/internal/storage/postgres_channel_list_storage/GetChannels()"
 	myLogger := logger.NewColorLogger(lblConsume)
 
 	query := `
@@ -107,8 +107,8 @@ func (p *PostgresStorage) GetChannels(chatID int64) map[string]string {
 }
 
 // DeleteChannels удаляет канал для чата
-func (p *PostgresStorage) DeleteChannels(chatID int64, nameChannel string) {
-	const lblConsume = "tg_bot_micserv/internal/storage/postgres_channel_list_storage/DeleteChannels()"
+func (p *PostgresStorage) DeleteChannels(chatID int64, nameChannel string) error {
+	const lblConsume = "[myMicro] tg_bot_micserv/internal/storage/postgres_channel_list_storage/DeleteChannels()"
 	myLogger := logger.NewColorLogger(lblConsume)
 
 	query := `
@@ -119,13 +119,13 @@ func (p *PostgresStorage) DeleteChannels(chatID int64, nameChannel string) {
 	result, err := p.db.Exec(query, chatID, nameChannel)
 	if err != nil {
 		myLogger.Error(fmt.Sprintf("Ошибка удаления канала из Postgres: %s", err))
-		return
+		return err
 	}
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		myLogger.Error(fmt.Sprintf("Ошибка при получении затронутых строк из Postgres: %s", err))
-		return
+		return err
 	}
 
 	if rowsAffected > 0 {
@@ -133,6 +133,8 @@ func (p *PostgresStorage) DeleteChannels(chatID int64, nameChannel string) {
 	} else {
 		myLogger.Error(fmt.Sprintf("Канал %s не найден", nameChannel))
 	}
+
+	return nil
 }
 
 // runMigrations запускает миграции базы данных

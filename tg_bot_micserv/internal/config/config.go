@@ -6,21 +6,20 @@ import (
 	"strings"
 )
 
-// Структура Config содержит конфигурационные параметры
 type Config struct {
-	TGBotToken       string   // токен Telegram-бота
-	ServerPort       string   // адрес HTTP-сервера
-	KafkaPort        []string // адрес брокера Kafka
-	NameTopic01      string   // имя топика Kafka для отправки сообщений
-	NameTopic02      string   // имя топика Kafka для принятия сообщений
-	NameTopic03      string   // имя топика Kafka для принятия сообщений
-	NameTopic04      string   // имя топика Kafka для принятия сообщений
-	KafkaTopicSlise  []string // Срез имен топиков Kafka
-	DBHost           string   // хост базы данных внутри сети докер
-	DBPort           string   // порт базы данных внутри контейнера
-	PostgresDBName   string   // имя базы данных
-	PostgresUser     string   // имя юзера БД
-	PostgresPassword string   // пароль к БД
+	TGBotToken       string
+	ServerPort       string
+	KafkaPort        []string
+	NameTopic01      string
+	NameTopic02      string
+	NameTopic03      string
+	NameTopic04      string
+	KafkaTopicSlise  []string
+	DBHost           string
+	DBPort           string
+	PostgresDBName   string
+	PostgresUser     string
+	PostgresPassword string
 	DBSSLMOD         string
 }
 
@@ -31,13 +30,11 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("TG_BOT_TOKEN не указан")
 	}
 
-	// Получаем адрес сервера
 	serverPort := os.Getenv("SERVER_PORT")
 	if serverPort == "" {
 		return nil, fmt.Errorf("SERVER_PORT не указан")
 	}
 
-	// Получаем адрес брокерров Kafka
 	kafkaPort := make([]string, 0)
 	kafkaPort = append(kafkaPort, os.Getenv("KAFKA_PORT_01"))
 	if kafkaPort[0] == "" {
@@ -52,7 +49,6 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("KAFKA_PORT_03 не указан")
 	}
 
-	// Получаем имена топиков Kafka
 	kafkaTopicSlise := make([]string, 0)
 
 	nameTopic01 := os.Getenv("NAME_TOPIC_01")

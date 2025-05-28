@@ -4,67 +4,76 @@ import (
 	"bytes"
 	"context"
 	"encoding/base64"
+	"fmt"
 	"io"
 	"io/ioutil"
+	"log"
 	"log/slog"
 	"sort"
-	//"time"
+	"strconv"
+	"time"
 
 	"github.com/hajimehoshi/go-mp3"
 	"google.golang.org/api/option"
 	texttospeech "google.golang.org/api/texttospeech/v1"
 
 	"text_to_speech_app/internal/config"
-	//"text_to_speech_app/internal/metrics/metrics_prometheus"
+	"text_to_speech_app/internal/metrics/metrics_prometheus"
 	"text_to_speech_app/internal/model/model_kafka"
 	"text_to_speech_app/tools/logger"
 )
 
-// GoogleTextToAudio представляет сервис Text-to-Speech
 type GoogleTextToAudio struct {
-	credentialsFile string // Путь к файлу учетных данных Google Text to Speech
+	clientTTS         *texttospeech.Service
+	MetricsPrometheus *metrics_prometheus.TGBotMetricsPrometheus
 }
 
-// NewGoogleTextToAudio создаёт новый экземпляр сервиса Text-to-Speech
-func NewGoogleTextToAudio(cfg *config.Config) *GoogleTextToAudio {
+func NewGoogleTextToAudio(cfg *config.Config, metricsPrometheus *metrics_prometheus.TGBotMetricsPrometheus) *GoogleTextToAudio {
+	const lblNewTTS = "[myMicro] text_to_speech_micserv/internal/app_text_to_speech/NewGoogleTextToAudio()"
+	myLogger := logger.NewColorLogger(lblNewTTS)
+
+	ctx := context.Background()
+	clientTTS, err := texttospeech.NewService(ctx, option.WithCredentialsFile(cfg.GoogleCredentialsFile))
+	if err != nil {
+		myLogger.Error(fmt.Sprintf("[myMicro] Ошибка при создании клиента: %v", err))
+		log.Fatal(err)
+	}
+
 	return &GoogleTextToAudio{
-		credentialsFile: cfg.GoogleCredentialsFile,
+		MetricsPrometheus: metricsPrometheus,
+		clientTTS:         clientTTS,
 	}
 }
 
-// Synthesize выполняет синтез речи на основе запроса
 func (s *GoogleTextToAudio) Synthesize(ctx context.Context, messageFromTGAPP *model_kafka.KafkaMessageFromTGAPP) (*model_kafka.KafkaRequestForTGBot, error) {
-	const lblSynthesize = "text_to_speech_micserv/internal/app_text_to_speech/Synthesize()"
+	const lblSynthesize = "[myMicro] text_to_speech_micserv/internal/app_text_to_speech/Synthesize()"
 	myLogger := logger.NewColorLogger(lblSynthesize)
 
 	ctx = context.Background()
 
-	// Создаём новый клиент Text-to-Speech Google
-	client, err := texttospeech.NewService(ctx, option.WithCredentialsFile(s.credentialsFile))
-	if err != nil {
-		myLogger.Error("Не удалось создать клиент Text-to-Speech", slog.Any("error", err))
-		return nil, err
-	}
-	myLogger.Info("Создали клиента Text-to-Speech")
-
 	// Создаём мапу для хранения аудиоданных по идентификатору
 	audioDataMap := make(map[int64][]byte)
+
 	// Создаём срез для хранения ключей мапы
 	keys := make([]int64, 0, len(messageFromTGAPP.TextForAudio))
+
 	// Заполняем срез ключами
 	for k := range messageFromTGAPP.TextForAudio {
 		keys = append(keys, k)
 	}
 	// Сортируем ключи по возрастанию
 	sort.Slice(keys, func(i, j int) bool { return keys[i] < keys[j] })
-	// Логируем количество текстов для обработки
-	myLogger.Info("Отсортированы ключи мапы", slog.Int("key_count", len(keys)))
+	myLogger.Info(fmt.Sprintf("Отсортированы ключи мапы: %v", len(keys)))
+
+	var count int64 = 0
 
 	// Итерируем по отсортированным ключам
 	for _, id := range keys {
-		text := messageFromTGAPP.TextForAudio[id] // Получаем текст для текущего идентификатора
-		myLogger.Info("Синтез речи для текста", slog.Int64("id", id), slog.String("text", text))
-		input := &texttospeech.SynthesisInput{ // Определяем входной текст
+		count++
+
+		text := messageFromTGAPP.TextForAudio[id]
+
+		input := &texttospeech.SynthesisInput{
 			Text: text,
 		}
 		// Настраиваем параметры голоса
@@ -85,17 +94,23 @@ func (s *GoogleTextToAudio) Synthesize(ctx context.Context, messageFromTGAPP *mo
 			AudioConfig: audioConfig,
 		}
 
-		//uc.MetricsTime.TimeRequest = time.Now()
-		//uc.MetricsTime.RequestID++
-		//uc.MetricsTime.ChatID = chatID
+		s.MetricsPrometheus.IncUpdate()
+		s.MetricsPrometheus.TimeStartRequestGoogle = time.Now()
 
 		// Выполняем запрос синтеза речи
-		resp, err := client.Text.Synthesize(ttsReq).Do()
+		resp, err := s.clientTTS.Text.Synthesize(ttsReq).Do()
 		if err != nil {
 			myLogger.Error("Не удалось синтезировать речь", slog.Int64("id", id), slog.Any("error", err))
 			return nil, err
 		}
-		myLogger.Info("Успешно синтэзировали речь", slog.Int64("id", id))
+		myLogger.Info(fmt.Sprintf("Успешно синтэзировали речь %v", count))
+
+		tt := time.Since(s.MetricsPrometheus.TimeStartRequestGoogle)
+		strChatID := strconv.FormatInt(s.MetricsPrometheus.ChatID, 10)
+		strCount := strconv.FormatInt(count, 10)
+
+		myLogger.Info(fmt.Sprintf("Метрики для сохранения: RequestID: %v, ChatID: %v, Time %v, Count %v", s.MetricsPrometheus.RequestID, s.MetricsPrometheus.ChatID, tt, count))
+		s.MetricsPrometheus.ObserveDurationGoogle(s.MetricsPrometheus.RequestID, strChatID, strCount, tt)
 
 		// Декодируем base64-строку в байты
 		audioData, err := base64.StdEncoding.DecodeString(resp.AudioContent)

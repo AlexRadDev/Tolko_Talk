@@ -56,9 +56,12 @@ start_tg_bot_.sh
 stsrt_text_to_speech_.sh
 start_prometheus_.sh
 start_grafana_.sh
+start_loki_.sh
+start_promtail_.sh
 
 # Docker
 .dockerignore
+docker-compose.yml
 
 # txt
 README.md

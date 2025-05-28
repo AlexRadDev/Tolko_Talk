@@ -26,9 +26,8 @@ const (
 )
 
 func main() {
-	const lblmain = "cmd/main.go/main()"
+	const lblmain = "[myMicro] cmd/main.go/main()"
 	myLogger := logger.NewColorLogger(lblmain)
-	slog.SetDefault(myLogger)
 
 	//region ЗагруЗка файл .env
 	//if err := godotenv.Load(envPath); err != nil {
@@ -44,32 +43,33 @@ func main() {
 		slog.Error(fmt.Sprintf("Ошибка загрузки конфигурации", err))
 		os.Exit(1)
 	}
-	slog.Info("Успешно создали объект конфига")
-
-	// Создаём слой бизнес-логики
-	GoogleTextToAudio := google_text_to_audio.NewGoogleTextToAudio(cfg)
-	slog.Info("Успешно создали объект Text-to-Speech")
-
-	// Объявили интерфейс обработки текста в аудио
-	var аudioSynthesizer interface_text_to_audio.InterfaceTextToAudio
-	// Присвоили интерфейсу реализацию через Google Text to Speech
-	аudioSynthesizer = GoogleTextToAudio
+	myLogger.Info("Успешно создали объект конфига")
 
 	metricsPrometheus := metrics_prometheus.NewTGBotMetricsPrometheus()
 
+	// Создаём слой бизнес-логики
+	GoogleTextToAudio := google_text_to_audio.NewGoogleTextToAudio(cfg, metricsPrometheus)
+	myLogger.Info("Успешно создали объект Text-to-Speech")
+
+	// Объявили интерфейс обработки текста в аудио
+	var audioSynthesizer interface_text_to_audio.InterfaceTextToAudio
+
+	// Присвоили интерфейсу реализацию через Google Text to Speech
+	audioSynthesizer = GoogleTextToAudio
+
 	// Создаем Kafka-продюсер
 	kafkaProducer := producer.NewProducer(cfg)
-	slog.Info("Успешно создали Kafka-продюсер")
+	myLogger.Info("Успешно создали Kafka-продюсер")
 
 	// Создаем Kafka-консьюмер
-	kafkaConsumer := consumer.NewConsumer(cfg, kafkaProducer, аudioSynthesizer, metricsPrometheus)
-	slog.Info("Успешно создали Kafka-консьюмер")
+	kafkaConsumer := consumer.NewConsumer(cfg, kafkaProducer, audioSynthesizer, metricsPrometheus)
+	myLogger.Info("Успешно создали Kafka-консьюмер")
 
 	// Запускаем Kafka-консьюмер в отдельной горутине
 	go func() {
 		slog.Info("Запуск Kafka-консьюмера")
 		if err := kafkaConsumer.Consume(context.Background(), cfg); err != nil {
-			slog.Error("Ошибка работы Kafka-консьюмера", slog.Any("error", err))
+			myLogger.Error(fmt.Sprintf("Ошибка работы Kafka-консьюмера: %v", err))
 			os.Exit(1)
 		}
 	}()
@@ -87,22 +87,22 @@ func main() {
 
 	go func() {
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			slog.Error("Ошибка при запуске сервера:", err)
+			myLogger.Error(fmt.Sprintf("Ошибка при запуске сервера: %v", err))
 		}
 	}()
-	slog.Info(fmt.Sprintf("Сервер запущен на порту: %v", srv.Addr))
+	myLogger.Info(fmt.Sprintf("Сервер запущен на порту: %v", srv.Addr))
 
 	<-stop
-	slog.Info("Получен сигнал завершения, инициируем graceful shutdown")
+	myLogger.Info("Получен сигнал завершения, инициируем graceful shutdown")
 
 	// Закрываем Kafka-консьюмер
 	if err := kafkaConsumer.Close(); err != nil {
-		slog.Error("Ошибка закрытия Kafka-консьюмера", slog.Any("error", err))
+		myLogger.Error(fmt.Sprintf("Ошибка закрытия Kafka-консьюмера: %v", err))
 	}
 
 	// Закрываем Kafka-продюсер
 	if err := kafkaProducer.Close(); err != nil {
-		slog.Error("Ошибка закрытия Kafka-продюсера", slog.Any("error", err))
+		myLogger.Error(fmt.Sprintf("Ошибка закрытия Kafka-продюсера: %v", err))
 	}
 
 	ctx1, cancel := context.WithTimeout(context.Background(), 5*time.Second)
@@ -110,8 +110,8 @@ func main() {
 
 	// Завершение работы сервера
 	if err := srv.Shutdown(ctx1); err != nil {
-		slog.Error("Ошибка при остановке сервера:", err)
+		myLogger.Error(fmt.Sprintf("Ошибка при остановке сервера: %v", err))
 	}
 
-	slog.Info("Микросервис text_to_speech успешно завершил работу")
+	myLogger.Info("Микросервис text_to_speech успешно завершил работу")
 }
